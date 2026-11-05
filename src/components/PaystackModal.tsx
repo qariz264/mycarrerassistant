@@ -57,13 +57,25 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
   const isAdminSession = typeof window !== 'undefined' && 
     new URLSearchParams(window.location.search).get('admin') === 'paystack';
 
+  const safeParseJson = async <T,>(res: Response): Promise<T | null> => {
+    try {
+      const ct = res.headers.get('content-type') || '';
+      if (ct.toLowerCase().includes('application/json')) {
+        return (await res.json()) as T;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
   // Load Paystack configuration on mount
   const loadConfig = async () => {
     try {
       const res = await fetch('/api/paystack/config');
       if (res.ok) {
-        const data: PaystackConfigInfo = await res.json();
-        setPaystackConfig(data);
+        const data = await safeParseJson<PaystackConfigInfo>(res);
+        if (data) setPaystackConfig(data);
       }
     } catch (e) {
       console.warn('Could not load Paystack configuration:', e);
@@ -126,11 +138,11 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
         }),
       });
 
-      const initData = await initRes.json();
+      const initData = await safeParseJson<any>(initRes);
 
-      if (!initRes.ok) {
+      if (!initRes.ok || !initData) {
         setVerificationStage('failed');
-        setErrorMessage(initData.error || 'Failed to initialize payment. Please try again.');
+        setErrorMessage(initData?.error || 'Failed to initialize payment. Please try again.');
         setIsProcessing(false);
         return;
       }
@@ -220,12 +232,12 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
         }),
       });
 
-      const verifyData = await verifyRes.json();
+      const verifyData = await safeParseJson<any>(verifyRes);
 
-      if (!verifyRes.ok) {
+      if (!verifyRes.ok || !verifyData) {
         // Expected user-facing validation response (e.g. user hasn't paid or window was closed)
         setVerificationStage('failed');
-        setErrorMessage(verifyData.error || 'Payment not finalized yet. Please complete payment.');
+        setErrorMessage(verifyData?.error || 'Payment not finalized yet. Please complete payment.');
         setIsProcessing(false);
         return;
       }
@@ -235,10 +247,10 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
         
         // Fetch fully unlocked assessment from server
         const fullRes = await fetch(`/api/assessments/${assessment.id}`);
-        const fullAssessment = await fullRes.json();
+        const fullAssessment = await safeParseJson<any>(fullRes);
         
         setTimeout(() => {
-          onPaymentSuccess(fullAssessment);
+          onPaymentSuccess(fullAssessment || { ...assessment, isUnlocked: true, paymentStatus: 'PAID' });
         }, 800);
       } else {
         setVerificationStage('failed');

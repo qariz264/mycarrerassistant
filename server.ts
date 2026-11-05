@@ -21,7 +21,8 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Initialize Gemini Client
 const ai = new GoogleGenAI({
@@ -390,6 +391,40 @@ app.post('/api/assessments', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error creating assessment:', error);
     return res.status(500).json({ error: 'Failed to process career assessment. Please check inputs and try again.' });
+  }
+});
+
+// Sync assessment computed on client or offline
+app.post('/api/assessments/sync', (req: Request, res: Response) => {
+  try {
+    const incoming = req.body as StudentAssessment;
+    if (!incoming || !incoming.id) {
+      return res.status(400).json({ error: 'Invalid assessment sync payload' });
+    }
+
+    const existingIdx = db.assessments.findIndex(a => a.id === incoming.id);
+    if (existingIdx >= 0) {
+      // Keep payment status if already paid on server
+      const current = db.assessments[existingIdx];
+      db.assessments[existingIdx] = {
+        ...incoming,
+        paymentStatus: current.paymentStatus === 'PAID' ? 'PAID' : incoming.paymentStatus,
+        isUnlocked: current.paymentStatus === 'PAID' || incoming.isUnlocked,
+        updatedAt: new Date().toISOString(),
+      };
+    } else {
+      db.assessments.push({
+        ...incoming,
+        createdAt: incoming.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    saveDatabase(db);
+    return res.json({ status: 'ok', id: incoming.id });
+  } catch (error: any) {
+    console.error('Error syncing assessment:', error);
+    return res.status(500).json({ error: 'Failed to sync assessment' });
   }
 });
 

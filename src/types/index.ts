@@ -198,6 +198,7 @@ export interface StudentAssessment {
   studentEstimatedClusterPoints: number; // General estimated weighted cluster points (max 48.000)
   
   paymentStatus: PaymentStatus;
+  isUnlocked?: boolean;
   paymentReference?: string;
   paidAmount?: number;
   paidAt?: string;

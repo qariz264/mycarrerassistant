@@ -51,7 +51,8 @@ export const PaystackConfigModal: React.FC<PaystackConfigModalProps> = ({
     setIsLoading(true);
     try {
       const res = await fetch('/api/paystack/config');
-      if (res.ok) {
+      const ct = res.headers.get('content-type') || '';
+      if (res.ok && ct.includes('application/json')) {
         const data: PaystackConfigInfo = await res.json();
         setConfig(data);
         if (data.source === 'custom' || data.source === 'env') {
@@ -59,7 +60,7 @@ export const PaystackConfigModal: React.FC<PaystackConfigModalProps> = ({
         }
       }
     } catch (err) {
-      console.error('Failed to load Paystack config:', err);
+      console.warn('Failed to load Paystack config:', err);
     } finally {
       setIsLoading(false);
     }
@@ -99,7 +100,8 @@ export const PaystackConfigModal: React.FC<PaystackConfigModalProps> = ({
         }),
       });
 
-      const data = await res.json();
+      const ct = res.headers.get('content-type') || '';
+      const data = ct.includes('application/json') ? await res.json() : {};
 
       if (!res.ok) {
         if (data.canForce) {
@@ -143,7 +145,8 @@ export const PaystackConfigModal: React.FC<PaystackConfigModalProps> = ({
 
     try {
       const res = await fetch('/api/paystack/config/reset', { method: 'POST' });
-      const data = await res.json();
+      const ct = res.headers.get('content-type') || '';
+      const data = ct.includes('application/json') ? await res.json() : {};
       if (res.ok) {
         setMessage({
           type: 'success',

@@ -12,8 +12,22 @@ import { PaystackModal } from './components/PaystackModal';
 import { PaystackConfigModal } from './components/PaystackConfigModal';
 import { FullReport } from './components/FullReport';
 import { StudentAssessment } from './types';
+import { runFullCareerAssessment } from './lib/recommendationEngine';
+import { INITIAL_PROGRAMMES } from './data/kuccpsData';
 
 type ViewMode = 'landing' | 'wizard' | 'preview' | 'report';
+
+async function safeParseJson<T>(response: Response): Promise<T | null> {
+  try {
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.toLowerCase().includes('application/json')) {
+      return (await response.json()) as T;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 export default function App() {
   const [currentView, setCurrentView] = useState<ViewMode>('landing');
@@ -35,6 +49,19 @@ export default function App() {
       setIsPaystackConfigOpen(true);
     }
 
+    // Try fast restore from localStorage cached full assessment if available
+    const cachedDataStr = localStorage.getItem('career_assistant_ke_active_data');
+    if (cachedDataStr && savedAssessmentId) {
+      try {
+        const cached = JSON.parse(cachedDataStr);
+        if (cached && (cached.id === savedAssessmentId || !paramAssessmentId)) {
+          setCurrentAssessment(cached);
+        }
+      } catch {
+        // ignore parse error
+      }
+    }
+
     // If returning from Paystack with a transaction reference
     if (reference && savedAssessmentId) {
       setIsLoading(true);
@@ -46,29 +73,35 @@ export default function App() {
           assessmentId: savedAssessmentId,
         }),
       })
-        .then((res) => res.json())
-        .then((verifyData) => {
-          if (verifyData.status === 'PAID') {
+        .then(async (res) => {
+          const verifyData = await safeParseJson<{ status?: string }>(res);
+          if (verifyData && verifyData.status === 'PAID') {
             return fetch(`/api/assessments/${savedAssessmentId}`);
           }
-          throw new Error('Payment verification unsuccessful');
+          throw new Error('Payment verification pending or unsuccessful');
         })
-        .then((res) => res.json())
-        .then((fullAssessment: StudentAssessment) => {
-          setCurrentAssessment(fullAssessment);
-          setCurrentView('report');
+        .then(async (res) => {
+          const fullAssessment = await safeParseJson<StudentAssessment>(res);
+          if (fullAssessment) {
+            setCurrentAssessment(fullAssessment);
+            localStorage.setItem('career_assistant_ke_active_data', JSON.stringify(fullAssessment));
+            setCurrentView('report');
+          }
           // Clean up query parameters without reloading
           window.history.replaceState({}, document.title, window.location.pathname);
         })
         .catch((err) => {
-          console.error('Error verifying redirected payment:', err);
-          // Restore regular assessment state
+          console.warn('Redirected payment check:', err);
+          // Attempt to restore regular assessment state safely
           fetch(`/api/assessments/${savedAssessmentId}`)
-            .then((r) => r.json())
-            .then((a) => {
-              setCurrentAssessment(a);
-              setCurrentView(a.paymentStatus === 'PAID' ? 'report' : 'preview');
-            });
+            .then(async (r) => {
+              const a = await safeParseJson<StudentAssessment>(r);
+              if (a) {
+                setCurrentAssessment(a);
+                setCurrentView(a.paymentStatus === 'PAID' ? 'report' : 'preview');
+              }
+            })
+            .catch(() => {});
         })
         .finally(() => {
           setIsLoading(false);
@@ -79,15 +112,19 @@ export default function App() {
     // Normal load from localStorage
     if (savedAssessmentId) {
       fetch(`/api/assessments/${savedAssessmentId}`)
-        .then((res) => {
-          if (res.ok) return res.json();
-          throw new Error('Could not restore assessment');
+        .then(async (res) => {
+          if (res.ok) {
+            const data = await safeParseJson<StudentAssessment>(res);
+            if (data) return data;
+          }
+          throw new Error('Could not restore from server');
         })
         .then((data: StudentAssessment) => {
           setCurrentAssessment(data);
+          localStorage.setItem('career_assistant_ke_active_data', JSON.stringify(data));
         })
         .catch(() => {
-          localStorage.removeItem('career_assistant_ke_active_id');
+          // Keep cached data if we already had it
         });
     }
   }, []);
@@ -97,6 +134,9 @@ export default function App() {
     setIsLoading(true);
     setGlobalError('');
 
+    let fullAssessment: StudentAssessment | null = null;
+
+    // 1. Try server assessment creation first
     try {
       const response = await fetch('/api/assessments', {
         method: 'POST',
@@ -106,24 +146,72 @@ export default function App() {
         body: JSON.stringify(inputData),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to submit assessment.');
+      const data = await safeParseJson<StudentAssessment & { error?: string }>(response);
+      if (response.ok && data && data.id) {
+        fullAssessment = data;
+      } else if (data && data.error) {
+        console.warn('Server assessment returned error:', data.error);
       }
+    } catch (networkErr) {
+      console.warn('Network request failed, running deterministic local computation:', networkErr);
+    }
 
-      const fullAssessment = await response.json();
+    // 2. Guaranteed instant local calculation fallback so analysis NEVER fails or crashes
+    if (!fullAssessment) {
+      try {
+        const calculated = runFullCareerAssessment(
+          {
+            studentName: inputData.studentName || 'Form Four Graduate',
+            studentEmail: inputData.studentEmail,
+            studentPhone: inputData.studentPhone,
+            kcseYear: parseInt(inputData.kcseYear, 10) || 2025,
+            indexNumber: inputData.indexNumber,
+            subjects: inputData.subjects || [],
+            hobbies: inputData.hobbies || [],
+            otherHobby: inputData.otherHobby,
+            intendedCourse: inputData.intendedCourse || "I don't know yet",
+          },
+          INITIAL_PROGRAMMES
+        );
 
+        const localId = `ASMT_${Date.now()}_${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+        fullAssessment = {
+          ...calculated,
+          id: localId,
+          paymentStatus: 'UNPAID',
+          paidAmount: 0,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          isUnlocked: false,
+        };
+
+        // Sync with server in background
+        fetch('/api/assessments/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(fullAssessment),
+        }).catch(() => {});
+      } catch (calcErr: any) {
+        console.error('Local evaluation error:', calcErr);
+        setGlobalError('Please select at least 7 KCSE subjects with grades to analyze your career pathways.');
+        setIsLoading(false);
+        return;
+      }
+    }
+
+    if (fullAssessment) {
       setCurrentAssessment(fullAssessment);
       localStorage.setItem('career_assistant_ke_active_id', fullAssessment.id);
+      try {
+        localStorage.setItem('career_assistant_ke_active_data', JSON.stringify(fullAssessment));
+      } catch {
+        // ignore localStorage quota warnings
+      }
       // Show snippet of analysis first; pay 100 KSh via Paystack to unlock and download full report
       setCurrentView(fullAssessment.paymentStatus === 'PAID' ? 'report' : 'preview');
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (err: any) {
-      console.error('Error submitting assessment:', err);
-      setGlobalError(err.message || 'Error processing career assessment. Please try again.');
-    } finally {
-      setIsLoading(false);
     }
+    setIsLoading(false);
   };
 
   // Handle Payment Success from Paystack Modal
