@@ -221,6 +221,71 @@ function saveDatabase(databaseState: DatabaseSchema) {
 let db = loadDatabase();
 
 // --------------------------------------------------------------------------------
+// SEO SITEMAP & ROBOTS.TXT ROUTES
+// --------------------------------------------------------------------------------
+
+// Dynamic sitemap.xml matching current host/origin
+app.get('/sitemap.xml', (req: Request, res: Response) => {
+  const host = req.headers.host || 'careerassistant.ke';
+  const protocol = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
+  const baseUrl = process.env.APP_URL || `${protocol}://${host}`;
+  const today = new Date().toISOString().split('T')[0];
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>${baseUrl}/</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>${baseUrl}/?view=wizard</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>${baseUrl}/#how-it-works</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>${baseUrl}/#what-we-analyze</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>${baseUrl}/#faq</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+</urlset>`;
+
+  res.header('Content-Type', 'application/xml; charset=utf-8');
+  return res.send(xml);
+});
+
+// Dynamic robots.txt pointing to sitemap.xml
+app.get('/robots.txt', (req: Request, res: Response) => {
+  const host = req.headers.host || 'careerassistant.ke';
+  const protocol = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
+  const baseUrl = process.env.APP_URL || `${protocol}://${host}`;
+
+  const robots = `User-agent: *
+Allow: /
+Disallow: /api/
+
+Sitemap: ${baseUrl}/sitemap.xml
+`;
+  res.header('Content-Type', 'text/plain; charset=utf-8');
+  return res.send(robots);
+});
+
+// --------------------------------------------------------------------------------
 // API ROUTES
 // --------------------------------------------------------------------------------
 
