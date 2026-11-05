@@ -1,0 +1,6 @@
+{
+  "name": "Career Assistant KE",
+  "description": "Kenya's premier KCSE career guidance platform. Turn your KCSE results into a clearer path for your future with automated KUCCPS eligibility, cluster point estimates, and institution matching.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

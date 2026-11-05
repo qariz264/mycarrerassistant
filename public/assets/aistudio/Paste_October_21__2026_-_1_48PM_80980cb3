@@ -1,0 +1,863 @@
+Act as a senior full-stack engineer, data engineer, education placement specialist, and AI systems architect with deep knowledge of Kenya's education system, KUCCPS placement procedures, KCSE grading, university admissions, TVET institutions, and programme-specific entry requirements.
+
+You are working on my existing application, Career Assistant KE.
+
+Your task is to conduct a COMPLETE TECHNICAL AND FUNCTIONAL AUDIT of the application and fix all errors affecting course recommendations, KCSE grade analysis, cluster-point calculations, programme eligibility, institution matching, and personalized career guidance.
+
+This is not a request to create a new application or merely redesign the interface. Work with the existing codebase, preserve the working features, and improve the underlying data, calculations, matching logic, and user experience.
+
+The central objective is:
+
+**EVERY STUDENT SHOULD DISCOVER THE WIDEST POSSIBLE RANGE OF COURSES THEY MAY QUALIFY FOR, BASED ON THEIR ACTUAL KCSE PERFORMANCE, SUBJECT GRADES, PROGRAMME REQUIREMENTS, AND AVAILABLE PLACEMENT OPTIONS.**
+
+A student with a C+, B-, B, B+, A-, or A must not be unnecessarily restricted to a few popular courses, a single career category, or a predefined collection of programmes.
+
+==================================================
+
+1. AUDIT THE ENTIRE EXISTING APPLICATION
+   ==================================================
+
+Before making changes, inspect the entire project.
+
+Identify:
+
+* The frontend framework and application structure.
+* All pages, components, forms, APIs, and server-side functions.
+* The KCSE assessment and results-processing logic.
+* The cluster-point calculation implementation.
+* The programme eligibility and recommendation engine.
+* The course and institution datasets.
+* Any hardcoded courses, subject requirements, cluster points, or cut-off values.
+* Any AI prompts responsible for generating personalized career guidance.
+* The database schema, if a database is used.
+* Any existing authentication, payment, report generation, PDF export, and sharing features.
+
+Trace the complete journey from entering KCSE grades to generating and downloading the final career report.
+
+Do not assume that the interface is the source of every problem. Investigate the underlying logic and data.
+
+Identify duplicated calculations, inconsistent values, incorrect subject mappings, incomplete datasets, and conflicting eligibility decisions.
+
+Create a clear implementation plan, then execute the fixes in the existing codebase.
+
+Do not stop after producing an audit report. Implement and test the corrections.
+
+==================================================
+2. BUILD A COMPREHENSIVE KUCCPS PROGRAMME DATABASE
+==================================================
+
+The current system must not rely on a small, manually selected list of popular programmes.
+
+Develop a comprehensive, searchable programme database covering all available programme categories and qualification levels relevant to the student's KCSE results.
+
+Include, where available and officially supported:
+
+A. COMPUTING AND TECHNOLOGY
+
+* Computer Science
+* Information Technology
+* Software Engineering
+* Information Systems
+* Business Information Technology
+* Computer Technology
+* Cybersecurity
+* Data Science
+* Artificial Intelligence
+* Computer Networks
+* Telecommunications
+* Information Security
+* Related computing and digital technology programmes
+
+B. ENGINEERING AND BUILT ENVIRONMENT
+
+* Electrical and Electronic Engineering
+* Mechanical Engineering
+* Civil Engineering
+* Mechatronic Engineering
+* Chemical Engineering
+* Agricultural Engineering
+* Industrial Engineering
+* Telecommunications Engineering
+* Architecture
+* Quantity Surveying
+* Construction Management
+* Building Technology
+* Land Surveying
+* Geomatics
+* Related engineering and built-environment programmes
+
+C. HEALTH AND MEDICAL SCIENCES
+
+* Medicine and Surgery
+* Nursing
+* Pharmacy
+* Medical Laboratory Sciences
+* Clinical Medicine
+* Public Health
+* Medical Imaging
+* Physiotherapy
+* Occupational Therapy
+* Nutrition and Dietetics
+* Environmental Health
+* Health Records and Information Management
+* Biomedical Sciences
+* Related health programmes
+
+D. PURE AND APPLIED SCIENCES
+
+* Mathematics
+* Statistics
+* Physics
+* Chemistry
+* Biology
+* Biotechnology
+* Microbiology
+* Biochemistry
+* Environmental Science
+* Geology
+* Actuarial Science
+* Forensic Science
+* Related science programmes
+
+E. BUSINESS, FINANCE AND ECONOMICS
+
+* Bachelor of Commerce
+* Accounting
+* Finance
+* Economics
+* Economics and Statistics
+* Business Administration
+* Procurement and Supply Chain Management
+* Human Resource Management
+* Marketing
+* Entrepreneurship
+* Banking
+* Insurance
+* Project Management
+* Related business programmes
+
+F. AGRICULTURE AND ENVIRONMENT
+
+* Agriculture
+* Agricultural Economics
+* Agribusiness Management
+* Animal Science
+* Animal Health
+* Veterinary Medicine
+* Food Science and Technology
+* Horticulture
+* Forestry
+* Fisheries and Aquaculture
+* Range Management
+* Environmental Management
+* Related agricultural and environmental programmes
+
+G. EDUCATION AND SOCIAL SCIENCES
+
+* Bachelor of Education programmes
+* Early Childhood Education
+* Special Needs Education
+* Psychology
+* Sociology
+* Social Work
+* Political Science
+* International Relations
+* Development Studies
+* Community Development
+* Criminology
+* Anthropology
+* Related education and social science programmes
+
+H. LAW, HUMANITIES AND LANGUAGES
+
+* Law
+* Journalism
+* Communication
+* Public Relations
+* Linguistics
+* Literature
+* History
+* Geography
+* Religious Studies
+* Kiswahili
+* English
+* Translation and Interpretation
+* Related humanities programmes
+
+I. HOSPITALITY, TOURISM AND CREATIVE INDUSTRIES
+
+* Hospitality Management
+* Tourism Management
+* Travel Operations
+* Hotel Management
+* Culinary Arts
+* Fashion Design
+* Graphic Design
+* Animation
+* Film Production
+* Music
+* Fine Arts
+* Interior Design
+* Related creative and hospitality programmes
+
+J. OTHER PROFESSIONAL AND TECHNICAL FIELDS
+
+* Maritime Studies
+* Logistics
+* Aviation-related programmes where available
+* Real Estate
+* Sports Science
+* Sports Management
+* Disaster Management
+* Security Management
+* Records Management
+* Library and Information Science
+* Other officially listed programmes
+
+IMPORTANT:
+
+The categories above are discovery categories, not a claim that every named programme is currently available through KUCCPS or that all institutions offer it.
+
+Populate the database with the actual programmes found in authoritative sources. Do not invent programme codes, institutions, admission requirements, or placement availability.
+
+Include every additional valid programme discovered in the official data, even if it is absent from the illustrative lists above.
+
+Support university degrees, TVET diploma programmes, certificates, artisan programmes, and other placement pathways covered by the verified dataset.
+
+The database must be expandable without requiring developers to manually modify the recommendation algorithm every time a new programme is added.
+
+==================================================
+3. USE AUTHORITATIVE AND CURRENT KUCCPS DATA
+============================================
+
+Establish a reliable data acquisition and verification process.
+
+Prioritize:
+
+* Official KUCCPS programme listings.
+* Official KUCCPS admission requirements.
+* Official KUCCPS placement guidelines.
+* Official institution programme catalogues.
+* Official institution-specific subject requirements.
+* Officially published historical programme cut-off points.
+* Official TVET programme and entry requirements.
+
+Use the official KUCCPS website as the primary starting point:
+
+https://www.kuccps.net/
+
+Use other official government or institution sources when necessary to verify programme-specific information.
+
+Do not assume that searching the internet or generating a course name with AI establishes that a programme is available for placement.
+
+For each programme, store the following where available:
+
+* Official programme name.
+* Official programme code.
+* Qualification level.
+* Programme category or cluster.
+* Institution offering the programme.
+* Institution location and county.
+* Minimum KCSE mean grade.
+* Required subject combinations.
+* Minimum grade for each required subject.
+* Additional programme-specific conditions.
+* Official cluster or weighted-point requirements, where applicable.
+* Historical cut-off points by placement cycle.
+* Relevant academic year.
+* Current placement availability, when verifiable.
+* Data source.
+* Source URL.
+* Date last verified.
+* Data confidence or verification status.
+
+Maintain historical admission data separately from current eligibility requirements.
+
+If an official requirement cannot be verified, mark it as unverified instead of inventing a value.
+
+If browsing, downloading, or automated extraction is unavailable, build the import and validation infrastructure and clearly identify which data still needs to be supplied or verified.
+
+Do not fabricate a complete database simply to make the interface appear populated.
+
+==================================================
+4. FIX THE KCSE GRADE AND ELIGIBILITY ENGINE
+============================================
+
+Implement a centralized and testable eligibility engine.
+
+The engine must distinguish between:
+
+1. KCSE mean-grade eligibility.
+2. Programme-specific subject eligibility.
+3. Weighted cluster-point estimates.
+4. Historical programme cut-off comparisons.
+5. Current placement availability.
+6. Final official placement decisions.
+
+These are separate concepts and must never be treated as interchangeable.
+
+For each programme, determine whether the student:
+
+* Meets all verified minimum requirements.
+* Fails one or more verified minimum requirements.
+* May qualify, but the available requirements are incomplete.
+* Meets the academic requirements, but current placement availability is unknown.
+* Meets the academic requirements, but is below a relevant historical cut-off.
+* Has insufficient data for a reliable decision.
+
+Use clear and accurate status labels.
+
+Do not mark a student as eligible merely because their mean grade exceeds C+.
+
+Likewise, do not reject a student merely because the programme is not related to their stated career interest.
+
+Evaluate each programme independently against its own verified requirements.
+
+A student interested in technology must still be shown eligible programmes in agriculture, business, sciences, education, hospitality, humanities, and other fields when they qualify and when those programmes are relevant to their discovery preferences.
+
+Never impose a hidden restriction that prevents eligible programmes from being considered.
+
+==================================================
+5. CORRECT THE CLUSTER-POINT CALCULATIONS
+=========================================
+
+Audit the current cluster-point calculation implementation.
+
+Identify the applicable official KUCCPS methodology for the relevant placement cycle and qualification level.
+
+Implement the correct methodology using verified source data and the appropriate subject weighting or normalization rules.
+
+Requirements:
+
+* Use the student's actual subject grades.
+* Use the correct grading scale and subject mappings.
+* Use the applicable official formula.
+* Calculate cluster points separately for each programme or cluster where the official methodology requires it.
+* Do not use one cluster score for every programme.
+* Do not assign the same estimated cluster score to unrelated programmes without a mathematically valid reason.
+* Do not confuse raw KCSE aggregate points with weighted cluster points.
+* Do not confuse a programme-specific weighted score with a general student score.
+* Handle missing, invalid, or unsupported subject grades explicitly.
+* Validate rounding and precision.
+* Avoid duplicated or inconsistent calculation logic across frontend and backend.
+* Use the same trusted calculation service wherever a score is displayed.
+
+Every displayed score must have a traceable calculation.
+
+Include a calculation explanation in the report, using an appropriate level of detail for the student.
+
+If the official formula cannot be verified, label the score as unavailable rather than presenting an invented score as an accurate estimate.
+
+Where the methodology changes between placement cycles, maintain versioned calculation rules.
+
+==================================================
+6. REMOVE THE ARTIFICIAL COURSE LIMIT
+=====================================
+
+This is one of the most important requirements.
+
+The current application must not show only 20 programmes simply because a developer hardcoded a list of 20.
+
+Search the complete available programme database.
+
+Evaluate all programmes against the student's results.
+
+Then display the full set of valid matches, subject to sensible pagination and interface performance.
+
+The student must be able to:
+
+* View all qualifying programmes.
+* Search programmes by name.
+* Filter by qualification level.
+* Filter by field of study.
+* Filter by university or TVET institution.
+* Filter by county or location.
+* Filter by public or private institution where the placement data supports that distinction.
+* Filter by eligibility status.
+* Sort by programme name.
+* Sort by historical competitiveness.
+* Compare programmes.
+* View all qualifying options across different fields.
+* Open detailed admission requirements for each programme.
+
+Pagination must not remove courses from the underlying search or matching results.
+
+If the database contains 250 qualifying programmes, the engine must not silently return only 20 and describe the list as exhaustive.
+
+Clearly display the number of matches found and the number of programmes available in the underlying dataset.
+
+Separate the complete matching results from the featured recommendations.
+
+For example:
+
+* All qualifying programmes: 250.
+* Strong academic matches: 45.
+* Competitive alternatives: 70.
+* Additional qualifying options: 135.
+
+These figures are illustrative only. Calculate the actual counts dynamically.
+
+Never claim to have checked every programme if the underlying database is incomplete.
+
+==================================================
+7. PRIORITIZE STUDENTS WITH C+ AND ABOVE
+========================================
+
+Students with a KCSE mean grade of C+ or higher should receive particularly comprehensive degree-level exploration.
+
+Do not limit them to computing, medicine, engineering, or other popular programmes.
+
+For every student meeting the applicable degree-level minimum, evaluate the full available degree database.
+
+For a student with C+, explore all degree programmes for which the student meets the actual mean-grade and subject-specific requirements.
+
+For a student with B-, B, B+, A-, or A, perform the same comprehensive search using their actual grades.
+
+A stronger mean grade must not narrow the list of available fields.
+
+However, do not assume that a high mean grade automatically satisfies every subject-specific requirement.
+
+For example, a student with a B+ who has insufficient Mathematics grades for a particular programme must not be marked eligible for that programme if Mathematics is a verified prerequisite.
+
+Conversely, a student with a B+ who meets the requirements for an eligible business, agricultural, education, environmental, hospitality, science, or humanities programme should not miss that programme merely because their initial career interest was different.
+
+The engine must support all valid combinations of mean grades and subject grades, not only C+ and above.
+
+For students below C+, comprehensively explore the applicable diploma, certificate, artisan, and other pathways using verified entry criteria.
+
+Where a student qualifies for several different qualification levels, allow them to explore all of them.
+
+Do not automatically replace an academically qualifying diploma or certificate option with a degree recommendation, or vice versa.
+
+==================================================
+8. SEPARATE ELIGIBILITY FROM PERSONALIZED RANKING
+=================================================
+
+Use two distinct processing stages.
+
+STAGE ONE: COMPREHENSIVE ELIGIBILITY MATCHING
+
+Evaluate every programme in the database using its official entry requirements.
+
+This stage must not depend on the student's preferred career, AI-generated recommendations, popularity, or ranking score.
+
+STAGE TWO: PERSONALIZED RECOMMENDATION RANKING
+
+Rank the programmes that passed the eligibility evaluation using factors such as:
+
+* Student's stated career interests.
+* Relevant subject strengths.
+* Programme-specific weighted-point estimates.
+* Historical cut-off information.
+* Preferred location.
+* Preferred qualification level.
+* Institution preferences.
+* Other preferences explicitly provided by the student.
+
+A student who selects medicine as an interest must still be able to discover other eligible fields.
+
+Display a clearly visible option to remove personalization and view all qualifying programmes.
+
+Never allow the AI ranking stage to remove valid matches from the complete eligibility results.
+
+Avoid presenting one ranking as a guarantee of admission.
+
+==================================================
+9. IMPROVE THE RECOMMENDATION CATEGORIES
+========================================
+
+Create clear, evidence-based categories.
+
+A. ELIGIBLE PROGRAMMES
+
+Programmes for which all verified academic entry requirements are satisfied.
+
+This label describes academic eligibility, not guaranteed admission.
+
+B. COMPETITIVE OPTIONS
+
+Eligible programmes whose available historical cut-off information suggests a potentially favorable competitive position.
+
+Explain the academic year of the cut-off used.
+
+C. ASPIRATIONAL OPTIONS
+
+Programmes for which the student satisfies academic minimums but whose historical cut-offs indicate that placement may be more competitive.
+
+Do not misrepresent an aspirational programme as academically ineligible.
+
+D. ADDITIONAL PATHWAYS
+
+Relevant diploma, certificate, artisan, and TVET options for which the student qualifies.
+
+E. REQUIREMENTS NEED VERIFICATION
+
+Programmes that could not be evaluated conclusively because the official requirements or relevant student data are incomplete.
+
+Do not mix these with confirmed eligible programmes.
+
+Do not describe a programme as a safe option merely because its historical cut-off was lower than the student's estimated score.
+
+Historical cut-offs are not guarantees of future placement.
+
+==================================================
+10. FIX THE CURRENT REPORT'S INCONSISTENCIES
+============================================
+
+Audit the generated report for contradictions.
+
+For example, the report may display one estimated cluster score in the student summary and a different score in the course analysis.
+
+It may state that a student meets published requirements while also displaying a historical cut-off above their estimated score.
+
+It may claim that a particular programme is competitive without sufficient supporting data.
+
+It may recommend specific institutions without confirming that the programme is available at those institutions in the relevant placement cycle.
+
+Fix these issues at their source.
+
+Implement a single structured assessment result that supplies consistent values to:
+
+* The student summary.
+* Programme cards.
+* Eligibility badges.
+* Personalized counselor guidance.
+* Institution tables.
+* Downloadable PDF reports.
+* Shared report pages.
+* Printed reports.
+* Any dashboards or APIs.
+
+Never independently regenerate or recalculate the same score in different components.
+
+Ensure that programme names, codes, institutions, subject requirements, eligibility statuses, and cluster scores agree throughout the report.
+
+Remove unsupported claims about guaranteed placement, government sponsorship, admission probabilities, or professional accreditation.
+
+Do not state that the student has cleared a requirement unless the requirement has been verified.
+
+==================================================
+11. MAKE THE AI COUNSELOR DATA-DRIVEN
+=====================================
+
+The personalized career counselor must use the actual results from the assessment engine.
+
+Do not let the language model invent:
+
+* Subject grades.
+* Student interests.
+* Cluster-point values.
+* Course requirements.
+* Institution cut-offs.
+* Programme codes.
+* Admission probabilities.
+* Accreditation claims.
+* Historical placement outcomes.
+
+Provide the counselor with structured assessment data containing the student's grades, verified programme matches, unmet requirements, calculation metadata, and source information.
+
+Require the counselor to explain:
+
+1. What the student qualifies for academically.
+2. Which subject strengths support their options.
+3. Which subjects limit access to particular programmes.
+4. The different fields they can explore.
+5. Relevant degree, diploma, and TVET pathways.
+6. How historical cut-offs should be interpreted.
+7. Which details require verification before applying.
+
+Generate personalized advice without restricting the student to their first stated interest.
+
+Do not invent personal passions, career ambitions, extracurricular achievements, or academic strengths that the student never supplied.
+
+Avoid exaggerated phrases such as "guaranteed admission," "certain placement," or "guaranteed government sponsorship."
+
+Use encouraging, straightforward language appropriate for Kenyan students and parents.
+
+==================================================
+12. IMPROVE THE COURSE DISCOVERY INTERFACE
+==========================================
+
+Retain the existing branding and working application features.
+
+Improve the results interface so students can easily discover the full range of options.
+
+At the top of the report, show:
+
+* KCSE mean grade.
+* The supplied subject grades.
+* The number of programmes evaluated.
+* The number of confirmed academic matches.
+* The number of additional pathways.
+* Any important data limitations.
+
+Create dedicated sections or tabs for:
+
+1. All Qualifying Programmes.
+2. Degree Programmes.
+3. Diploma Programmes.
+4. Certificate Programmes.
+5. Artisan and Other TVET Pathways.
+6. Competitive Options.
+7. Programmes Requiring Further Verification.
+
+Make it possible to explore courses outside the student's initial interests.
+
+Each programme card should display:
+
+* Programme name and official code.
+* Qualification level.
+* Field of study.
+* Minimum mean-grade requirement.
+* Relevant subject requirements.
+* The student's actual subject grades for those requirements.
+* Eligibility status.
+* Weighted cluster score, if accurately calculable.
+* Historical cut-off and year, if verified.
+* Institutions offering the programme, if verified.
+* A link to official programme information where available.
+
+Ensure the interface remains usable on mobile phones and low-powered computers.
+
+Use pagination or incremental loading for performance without reducing the completeness of the underlying results.
+
+==================================================
+13. FIX INSTITUTION MATCHING
+============================
+
+Do not display arbitrary institutions beside a programme.
+
+Create a reliable relationship between each programme and the institutions officially offering it.
+
+Store programme codes, institution identifiers, qualification levels, relevant academic years, and official source references.
+
+For every institution shown, verify that the programme is actually offered there.
+
+Where available, include:
+
+* Institution name.
+* Campus.
+* County.
+* Institution type.
+* Relevant programme code.
+* Historical cut-off by year.
+* Current availability status.
+* Official institution or programme URL.
+
+Do not infer programme availability from an institution's name or general reputation.
+
+Do not automatically recommend an institution simply because it offered a similarly named programme in an older dataset.
+
+If current availability cannot be verified, label it accordingly.
+
+==================================================
+14. SUPPORT UPDATES WITHOUT REWRITING THE APPLICATION
+=====================================================
+
+Design the programme database and eligibility engine for maintainability.
+
+Separate:
+
+* Programme records.
+* Institution records.
+* Admission requirements.
+* Subject requirement rules.
+* Historical cut-offs.
+* Cluster calculation rules.
+* Placement-cycle metadata.
+* Source and verification records.
+
+Use appropriate database constraints and indexes.
+
+Avoid duplicating programme requirements across unrelated frontend components.
+
+If Firebase or another database is already configured, preserve the working infrastructure unless a migration is genuinely necessary.
+
+Provide an import mechanism for official programme datasets.
+
+Validate imported records for:
+
+* Duplicate programme codes.
+* Missing required fields.
+* Invalid grade values.
+* Incorrect institution relationships.
+* Conflicting requirements.
+* Invalid academic years.
+* Missing or malformed source references.
+
+Track when a dataset was imported and which placement cycle it represents.
+
+Do not overwrite verified data with incomplete or lower-confidence data without an explicit review process.
+
+==================================================
+15. CREATE AUTOMATED TESTS
+==========================
+
+Implement unit tests, integration tests, and realistic end-to-end scenarios.
+
+At minimum, test the following cases.
+
+TEST A: C+ STUDENT
+
+A student with a C+ mean grade must be evaluated against every degree programme in the database for which C+ is sufficient and whose subject prerequisites they satisfy.
+
+The engine must not return only computing, business, or other predefined popular courses.
+
+TEST B: B- STUDENT
+
+A student with B- must be evaluated across all relevant fields and qualification levels.
+
+The engine must not assume that a stronger mean grade makes every subject prerequisite valid.
+
+TEST C: B+ STUDENT
+
+A student with B+ must receive comprehensive matching across all fields.
+
+A high mean grade must not hide eligible programmes outside the student's selected career interest.
+
+TEST D: A STUDENT
+
+A student with A must receive the same comprehensive evaluation, with eligibility determined by the actual subject requirements.
+
+TEST E: STRONG MEAN GRADE, WEAK REQUIRED SUBJECT
+
+A student with B+ but below the required Mathematics grade for a specific engineering programme must not be marked eligible for that programme if the prerequisite is verified.
+
+Other programmes for which the student qualifies must still be returned.
+
+TEST F: MISSING SUBJECT GRADE
+
+If a required subject grade is missing, the engine must not silently assume the student passed it.
+
+Return an appropriate incomplete-data or verification status.
+
+TEST G: MULTIPLE CAREER INTERESTS
+
+A student interested in medicine must still be able to discover all other academically qualifying fields.
+
+TEST H: PROGRAMME RESULT COUNT
+
+If 200 programmes satisfy the eligibility conditions, the engine must retain all 200 in the complete results even when the first page displays only 20.
+
+TEST I: CLUSTER SCORE CONSISTENCY
+
+The same programme must display the same correctly calculated score in its card, report summary, PDF, and counselor input.
+
+TEST J: OUTDATED CUT-OFF
+
+An older historical cut-off must never be presented as a confirmed current-year admission requirement.
+
+TEST K: UNKNOWN PROGRAMME REQUIREMENTS
+
+A programme with incomplete official requirements must not be falsely classified as confirmed eligible or confirmed ineligible.
+
+TEST L: TVET ELIGIBILITY
+
+Students must be evaluated against the relevant diploma, certificate, artisan, and other TVET entry criteria without incorrectly applying university degree cluster-point rules.
+
+TEST M: INSTITUTION VALIDATION
+
+An institution must not be shown as offering a programme unless that relationship is supported by the programme database.
+
+TEST N: EMPTY OR INVALID DATA
+
+The system must handle invalid grades, missing subjects, incomplete datasets, and zero matching programmes gracefully.
+
+Use real official programme data where available and synthetic student records for controlled tests.
+
+Do not use invented admission requirements as test fixtures for claiming that real programmes are eligible.
+
+==================================================
+16. PRESERVE EXISTING FEATURES
+==============================
+
+Do not break the working features of Career Assistant KE.
+
+Preserve and regression-test:
+
+* KCSE assessment forms.
+* Existing student workflows.
+* Personalized reports.
+* PDF downloads.
+* Print functionality.
+* Shareable reports.
+* Responsive layout.
+* Existing database integrations.
+* Existing payment integrations.
+* Existing authentication, if present.
+* Existing branding and navigation.
+* Contact and application-assistance links.
+
+Fix defects without unnecessarily replacing working components.
+
+If a database migration or environment variable change is required, explain the exact steps.
+
+Never expose private API keys, payment credentials, or service account secrets in frontend code.
+
+==================================================
+17. IMPLEMENTATION AND DELIVERY RULES
+=====================================
+
+Follow this order:
+
+PHASE 1: Inspect the codebase and identify the root causes.
+
+PHASE 2: Audit the existing programme dataset and identify missing coverage.
+
+PHASE 3: Verify the applicable official KUCCPS rules and available programme data.
+
+PHASE 4: Fix grade normalization, subject requirements, eligibility logic, and cluster calculations.
+
+PHASE 5: Implement comprehensive programme matching without an artificial course limit.
+
+PHASE 6: Fix institution matching and historical cut-off handling.
+
+PHASE 7: Update the personalized counselor and report generation.
+
+PHASE 8: Improve course discovery and filtering.
+
+PHASE 9: Implement automated tests and regression tests.
+
+PHASE 10: Run the available build, type checks, linting, and tests.
+
+PHASE 11: Summarize what changed, what passed, what remains unverified, and any required deployment steps.
+
+Do not claim that a test passed unless you actually ran it.
+
+Do not claim that the database is comprehensive unless its coverage has been measured against the available official source data.
+
+Do not fabricate official KUCCPS data.
+
+Do not replace real calculations with hardcoded examples.
+
+Do not silently remove working features.
+
+If you encounter missing official data, implement the necessary architecture and explain exactly which records or official datasets remain outstanding.
+
+==================================================
+FINAL ACCEPTANCE CRITERIA
+=========================
+
+The work is complete only when:
+
+1. The system evaluates the full programme dataset available to it, not an arbitrary list of popular courses.
+2. Students with C+ and above can explore every programme in the dataset for which they satisfy verified academic requirements.
+3. Recommendations cover all relevant fields rather than being restricted to selected career categories.
+4. Subject-specific prerequisites are correctly enforced.
+5. Cluster calculations follow the applicable verified KUCCPS methodology.
+6. The same programme has consistent results throughout the application.
+7. Historical cut-offs are distinguished from current admission requirements.
+8. Institution relationships are based on verified programme data.
+9. Missing or uncertain data is clearly identified.
+10. Students can search, filter, compare, and explore all matching programmes.
+11. The AI counselor cannot invent admission requirements or override the eligibility engine.
+12. Existing features continue to work.
+13. Automated tests cover the main eligibility and calculation scenarios.
+14. The project builds successfully, or any remaining build failures are explicitly documented.
+15. The final implementation report distinguishes verified functionality from features awaiting official data.
+
+The guiding principle is simple:
+
+**DO NOT LIMIT THE STUDENT'S OPPORTUNITIES. MATCH THEIR ACTUAL RESULTS AGAINST THE WIDEST VERIFIED SET OF AVAILABLE PROGRAMMES, THEN HELP THEM MAKE AN INFORMED CHOICE.**
+
+Now inspect the existing project and implement the complete upgrade.
