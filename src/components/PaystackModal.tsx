@@ -138,15 +138,73 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
         }),
       });
 
-      const initData = await safeParseJson<any>(initRes);
+      let initData: any = null;
+      let rawInitText = '';
+      try {
+        rawInitText = await initRes.text();
+        try {
+          initData = JSON.parse(rawInitText);
+        } catch {
+          // Response is not JSON
+        }
+      } catch (readErr: any) {
+        rawInitText = readErr?.message || '';
+      }
 
       if (!initRes.ok || !initData?.status) {
+        // Fallback: If server-side init fails or returns error, check if a usable public key is available
+        const fallbackPublicKey = initData?.publicKey || paystackConfig?.publicKey;
+        if (fallbackPublicKey && fallbackPublicKey.startsWith('pk_')) {
+          const activeRef = `CAKE_${assessment.id.replace(/[^a-zA-Z0-9]/g, '')}_${Date.now()}`;
+          setCurrentReference(activeRef);
+          try {
+            localStorage.setItem('career_assistant_ke_active_ref', activeRef);
+            localStorage.setItem('career_assistant_ke_active_id', assessment.id);
+            localStorage.setItem('career_assistant_ke_active_data', JSON.stringify(assessment));
+          } catch (_) {}
+
+          const scriptReady = await ensurePaystackLoaded();
+          if (scriptReady && window.PaystackPop) {
+            setVerificationStage('awaiting_payment');
+            setIsProcessing(false);
+
+            const handler = window.PaystackPop.setup({
+              key: fallbackPublicKey,
+              email: customerEmail,
+              amount: 10000,
+              currency: 'KES',
+              ref: activeRef,
+              callback_url: `${returnUrl}&reference=${encodeURIComponent(activeRef)}`,
+              metadata: {
+                assessmentId: assessment.id,
+                studentName: assessment.studentName,
+                custom_fields: [
+                  { display_name: "Student Name", variable_name: "student_name", value: assessment.studentName },
+                  { display_name: "KCSE Year", variable_name: "kcse_year", value: String(assessment.kcseYear) }
+                ]
+              },
+              callback: function (response: any) {
+                const confirmedRef = response?.reference || response?.trxnref || activeRef;
+                handleVerifyOnServer(confirmedRef);
+              },
+              onClose: function () {
+                setIsProcessing(false);
+                setVerificationStage('awaiting_payment');
+              },
+            });
+            handler.openIframe();
+            return;
+          }
+        }
+
         setIsProcessing(false);
         setVerificationStage('failed');
-        setErrorMessage(
+        const detailedError = 
           initData?.error || 
-          'Payment service is currently unavailable. Please check that PAYSTACK_SECRET_KEY and PAYSTACK_PUBLIC_KEY are configured in your Vercel Environment Variables.'
-        );
+          initData?.message || 
+          (rawInitText && !rawInitText.startsWith('<!') ? rawInitText.slice(0, 160) : '') ||
+          'Payment service is currently unavailable. If you just added PAYSTACK_SECRET_KEY in Vercel, please trigger a Redeploy on Vercel so the environment variables take effect.';
+        setErrorMessage(detailedError);
         return;
       }
 
@@ -241,9 +299,18 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
         }),
       });
 
-      const verifyData = await safeParseJson<any>(verifyRes);
+      let verifyData: any = null;
+      let rawVerifyText = '';
+      try {
+        rawVerifyText = await verifyRes.text();
+        try {
+          verifyData = JSON.parse(rawVerifyText);
+        } catch {}
+      } catch (e: any) {
+        rawVerifyText = e?.message || '';
+      }
 
-      if (verifyRes.ok && verifyData && verifyData.status === 'PAID') {
+      if (verifyRes.ok && verifyData && (verifyData.status === 'PAID' || verifyData.success === true)) {
         setVerificationStage('success');
 
         // Fetch or use unlocked assessment
@@ -277,6 +344,7 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
       setVerificationStage('failed');
       setErrorMessage(
         verifyData?.error || 
+        (rawVerifyText && !rawVerifyText.startsWith('<!') ? rawVerifyText.slice(0, 160) : '') ||
         'Payment could not be verified by Paystack. Please ensure payment was completed and retry.'
       );
       setIsProcessing(false);

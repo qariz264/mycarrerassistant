@@ -24,6 +24,22 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Normalize incoming request URLs for Vercel Serverless Function rewrites & proxying
+app.use((req, _res, next) => {
+  if (req.url) {
+    try {
+      if (req.url.startsWith('/api/index.ts') || req.url.startsWith('/api/index')) {
+        const q0 = (req.query as any)?.['0'] || (req.query && Object.values(req.query)[0]);
+        if (typeof q0 === 'string' && q0) {
+          const search = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+          req.url = `/api/${q0.replace(/^\//, '')}${search}`;
+        }
+      }
+    } catch (_) {}
+  }
+  next();
+});
+
 // Initialize Gemini Client
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
@@ -52,13 +68,20 @@ export interface PaystackKeysInfo {
 
 export function cleanKey(val?: string): string {
   if (!val) return '';
-  return val.trim().replace(/^["']|["']$/g, '').trim();
+  let str = String(val).trim();
+  // Strip surrounding single, double, or backtick quotes
+  str = str.replace(/^["'`]|["'`]$/g, '').trim();
+  // Strip trailing semicolon or comma
+  str = str.replace(/[;,]$/, '').trim();
+  // Strip carriage returns, newlines, and tabs
+  str = str.replace(/[\r\n\t]/g, '').trim();
+  return str;
 }
 
 export function isUsableSecretKey(key?: string): boolean {
   if (!key) return false;
   const k = cleanKey(key);
-  if (k.length < 20) return false;
+  if (k.length < 15) return false;
   if (
     k.includes('YOUR_PAYSTACK') ||
     k.includes('xxxx') ||
@@ -69,13 +92,13 @@ export function isUsableSecretKey(key?: string): boolean {
   ) {
     return false;
   }
-  return k.startsWith('sk_test_') || k.startsWith('sk_live_');
+  return k.startsWith('sk_');
 }
 
 export function isUsablePublicKey(key?: string): boolean {
   if (!key) return false;
   const k = cleanKey(key);
-  if (k.length < 20) return false;
+  if (k.length < 15) return false;
   if (
     k.includes('YOUR_PAYSTACK') ||
     k.includes('xxxx') ||
@@ -86,7 +109,7 @@ export function isUsablePublicKey(key?: string): boolean {
   ) {
     return false;
   }
-  return k.startsWith('pk_test_') || k.startsWith('pk_live_');
+  return k.startsWith('pk_');
 }
 
 export function getPaystackKeys(): PaystackKeysInfo {
@@ -115,40 +138,100 @@ export function getPaystackKeys(): PaystackKeysInfo {
     console.warn('Could not read paystack-config.json:', err);
   }
 
-  // 2. Check process.env (Vercel Environment Variables: PAYSTACK_PUBLIC_KEY, PAYSTACK_SECRET_KEY)
-  const envPublic = cleanKey(
+  // 2. Check process.env (Vercel Environment Variables: PAYSTACK_PUBLIC_KEY, PAYSTACK_SECRET_KEY, and variations)
+  let rawPublic = cleanKey(
     process.env.PAYSTACK_PUBLIC_KEY || 
-    process.env.VITE_PAYSTACK_PUBLIC_KEY
+    process.env.paystack_public_key || 
+    process.env.VITE_PAYSTACK_PUBLIC_KEY || 
+    process.env.vite_paystack_public_key || 
+    process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY ||
+    process.env.PAYSTACK_PUBLIC ||
+    process.env.PAYSTACK_KEY
   );
-  const envSecret = cleanKey(
+  let rawSecret = cleanKey(
     process.env.PAYSTACK_SECRET_KEY || 
-    process.env.PAYSTACK_SECRET
+    process.env.paystack_secret_key || 
+    process.env.PAYSTACK_SECRET || 
+    process.env.paystack_secret || 
+    process.env.PAYSTACK_PRIVATE_KEY ||
+    process.env.VITE_PAYSTACK_SECRET_KEY
   );
 
-  const hasRealPublic = isUsablePublicKey(envPublic);
-  const hasRealSecret = isUsableSecretKey(envSecret);
+  // Scan all process.env variables to auto-detect any Paystack keys by prefix or name
+  if (!rawSecret) {
+    for (const [key, val] of Object.entries(process.env)) {
+      if (!val) continue;
+      const upper = key.toUpperCase();
+      const cleaned = cleanKey(val);
+      if (cleaned.startsWith('sk_test_') || cleaned.startsWith('sk_live_')) {
+        rawSecret = cleaned;
+        break;
+      }
+      if (
+        upper.includes('PAYSTACK') && 
+        (upper.includes('SECRET') || upper.includes('PRIVATE') || upper.includes('SEC_KEY') || upper.includes('_SK'))
+      ) {
+        rawSecret = cleaned;
+        break;
+      }
+    }
+  }
+
+  if (!rawPublic) {
+    for (const [key, val] of Object.entries(process.env)) {
+      if (!val) continue;
+      const upper = key.toUpperCase();
+      const cleaned = cleanKey(val);
+      if (cleaned.startsWith('pk_test_') || cleaned.startsWith('pk_live_')) {
+        rawPublic = cleaned;
+        break;
+      }
+      if (
+        upper.includes('PAYSTACK') && 
+        (upper.includes('PUBLIC') || upper.includes('PUB_KEY') || upper.includes('_PK'))
+      ) {
+        rawPublic = cleaned;
+        break;
+      }
+    }
+  }
+
+  // Auto-detect and fix accidental key inversion in Vercel UI
+  if (rawPublic.startsWith('sk_') && !rawSecret.startsWith('sk_')) {
+    const temp = rawPublic;
+    rawPublic = rawSecret.startsWith('pk_') ? rawSecret : '';
+    rawSecret = temp;
+  } else if (rawSecret.startsWith('pk_') && !rawPublic.startsWith('pk_')) {
+    const temp = rawSecret;
+    rawSecret = rawPublic.startsWith('sk_') ? rawPublic : '';
+    rawPublic = temp;
+  }
+
+  const hasRealPublic = isUsablePublicKey(rawPublic);
+  const hasRealSecret = isUsableSecretKey(rawSecret);
 
   if (hasRealPublic || hasRealSecret) {
     return {
-      publicKey: envPublic,
-      secretKey: envSecret,
+      publicKey: rawPublic,
+      secretKey: rawSecret,
       source: 'env',
       isConfigured: true,
-      isTest: envPublic.startsWith('pk_test_') || envSecret.startsWith('sk_test_'),
-      isLive: envPublic.startsWith('pk_live_') || envSecret.startsWith('sk_live_'),
+      isTest: rawPublic.startsWith('pk_test_') || rawSecret.startsWith('sk_test_'),
+      isLive: rawPublic.startsWith('pk_live_') || rawSecret.startsWith('sk_live_'),
     };
   }
 
   // 3. Fallback when keys are not yet configured
   return {
-    publicKey: envPublic || '',
-    secretKey: envSecret || '',
+    publicKey: rawPublic || '',
+    secretKey: rawSecret || '',
     source: 'demo',
     isConfigured: false,
     isTest: false,
     isLive: false,
   };
 }
+
 
 interface DatabaseSchema {
   programmes: Programme[];
@@ -323,7 +406,7 @@ Sitemap: ${baseUrl}/sitemap.xml
 // --------------------------------------------------------------------------------
 
 // Health check
-app.get('/api/health', (_req, res) => {
+app.get(['/api/health', '/health'], (_req, res) => {
   res.json({
     status: 'ok',
     service: 'Career Assistant KE Backend',
@@ -334,7 +417,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 // All 514 Verified Kenyan Institutions endpoint
-app.get('/api/institutions', (req: Request, res: Response) => {
+app.get(['/api/institutions', '/institutions'], (req: Request, res: Response) => {
   const { county, type, search } = req.query;
   let list = [...KENYAN_INSTITUTIONS];
 
@@ -365,7 +448,7 @@ app.get('/api/institutions', (req: Request, res: Response) => {
 });
 
 // Config endpoint for client
-app.get('/api/config', (_req, res) => {
+app.get(['/api/config', '/config'], (_req, res) => {
   const keys = getPaystackKeys();
   res.json({
     paystackPublicKey: keys.publicKey,
@@ -377,7 +460,7 @@ app.get('/api/config', (_req, res) => {
 });
 
 // 1. Submit Assessment & Generate Preview
-app.post('/api/assessments', (req: Request, res: Response) => {
+app.post(['/api/assessments', '/assessments'], (req: Request, res: Response) => {
   try {
     const { studentName, studentEmail, studentPhone, kcseYear, indexNumber, subjects, hobbies, otherHobby, intendedCourse } = req.body;
 
@@ -427,7 +510,7 @@ app.post('/api/assessments', (req: Request, res: Response) => {
 });
 
 // Sync assessment computed on client or offline
-app.post('/api/assessments/sync', (req: Request, res: Response) => {
+app.post(['/api/assessments/sync', '/assessments/sync'], (req: Request, res: Response) => {
   try {
     const incoming = req.body as StudentAssessment;
     if (!incoming || !incoming.id) {
@@ -461,7 +544,7 @@ app.post('/api/assessments/sync', (req: Request, res: Response) => {
 });
 
 // 2. Fetch Assessment by ID
-app.get('/api/assessments/:id', (req: Request, res: Response) => {
+app.get(['/api/assessments/:id', '/assessments/:id'], (req: Request, res: Response) => {
   const { id } = req.params;
   const assessment = db.assessments.find(a => a.id === id);
 
@@ -481,7 +564,7 @@ app.get('/api/assessments/:id', (req: Request, res: Response) => {
 // --------------------------------------------------------------------------------
 
 // Get current Paystack configuration status & public key
-app.get('/api/paystack/config', (_req: Request, res: Response) => {
+app.get(['/api/paystack/config', '/paystack/config'], (_req: Request, res: Response) => {
   const keys = getPaystackKeys();
   const maskSecret = (key: string) => {
     if (!key || key.length < 12) return 'sk_••••••••';
@@ -499,7 +582,7 @@ app.get('/api/paystack/config', (_req: Request, res: Response) => {
 });
 
 // Update Paystack keys dynamically (Supports Test & Live keys)
-app.post('/api/paystack/config', async (req: Request, res: Response) => {
+app.post(['/api/paystack/config', '/paystack/config'], async (req: Request, res: Response) => {
   try {
     const { publicKey, secretKey } = req.body;
 
@@ -510,8 +593,8 @@ app.post('/api/paystack/config', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Paystack Secret Key is required (e.g., sk_test_...)' });
     }
 
-    const cleanPublic = publicKey.trim();
-    const cleanSecret = secretKey.trim();
+    const cleanPublic = cleanKey(publicKey);
+    const cleanSecret = cleanKey(secretKey);
 
     if (!cleanPublic.startsWith('pk_test_') && !cleanPublic.startsWith('pk_live_')) {
       return res.status(400).json({
@@ -603,7 +686,7 @@ app.post('/api/paystack/config', async (req: Request, res: Response) => {
 });
 
 // Reset Paystack keys to default demo sandbox
-app.post('/api/paystack/config/reset', (_req: Request, res: Response) => {
+app.post(['/api/paystack/config/reset', '/paystack/config/reset'], (_req: Request, res: Response) => {
   try {
     if (fs.existsSync(PAYSTACK_CONFIG_FILE)) {
       fs.unlinkSync(PAYSTACK_CONFIG_FILE);
@@ -624,7 +707,7 @@ app.post('/api/paystack/config/reset', (_req: Request, res: Response) => {
 });
 
 // 3. Initialize Paystack Transaction
-app.post('/api/paystack/initialize', async (req: Request, res: Response) => {
+app.post(['/api/paystack/initialize', '/paystack/initialize'], async (req: Request, res: Response) => {
   try {
     const { assessmentId, email, assessment: incomingAssessment } = req.body;
     let assessment: StudentAssessment;
@@ -703,7 +786,7 @@ app.post('/api/paystack/initialize', async (req: Request, res: Response) => {
 
     if (!hasUsableSecret && !isUsablePublicKey(publicKey)) {
       return res.status(400).json({
-        error: 'Paystack is not configured in this environment. Please configure PAYSTACK_SECRET_KEY and PAYSTACK_PUBLIC_KEY in your Vercel project environment variables.',
+        error: 'Paystack is not configured in this environment. If you added PAYSTACK_SECRET_KEY and PAYSTACK_PUBLIC_KEY in Vercel, please trigger a Redeploy on Vercel (Dashboard > Deployments > Redeploy) so the environment variables take effect.',
         code: 'PAYSTACK_NOT_CONFIGURED',
       });
     }
@@ -744,7 +827,7 @@ app.post('/api/paystack/initialize', async (req: Request, res: Response) => {
           paystackData = await response.json();
         } catch (_) {}
 
-        // If merchant account in Paystack requires default currency instead of explicit KES
+        // Retry 1: If merchant account requires default currency instead of explicit KES
         if (paystackData && !paystackData.status && paystackData.message && paystackData.message.toLowerCase().includes('currency')) {
           delete payload.currency;
           response = await fetch('https://api.paystack.co/transaction/initialize', {
@@ -755,7 +838,25 @@ app.post('/api/paystack/initialize', async (req: Request, res: Response) => {
             },
             body: JSON.stringify(payload),
           });
-          paystackData = await response.json();
+          try {
+            paystackData = await response.json();
+          } catch (_) {}
+        }
+
+        // Retry 2: If callback_url is rejected (e.g. domain not whitelisted)
+        if (paystackData && !paystackData.status && paystackData.message && (paystackData.message.toLowerCase().includes('callback') || paystackData.message.toLowerCase().includes('url'))) {
+          delete payload.callback_url;
+          response = await fetch('https://api.paystack.co/transaction/initialize', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${secretKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+          });
+          try {
+            paystackData = await response.json();
+          } catch (_) {}
         }
 
         if (paystackData?.status && paystackData?.data?.authorization_url) {
@@ -774,8 +875,24 @@ app.post('/api/paystack/initialize', async (req: Request, res: Response) => {
           });
         }
 
-        if (paystackData && paystackData.status === false) {
-          console.error('Paystack initialization rejected:', paystackData);
+        // Fallback to client inline popup if Paystack rejected hosted initialization but public key is valid
+        if (paystackData && !paystackData.status) {
+          console.error('Paystack initialization rejected by API:', paystackData);
+          if (isUsablePublicKey(publicKey)) {
+            console.log('Falling back to client-side inline checkout using public key');
+            assessment.paymentStatus = 'PAYMENT_PENDING';
+            saveDatabase(db);
+            return res.json({
+              status: true,
+              reference,
+              amount: 100,
+              currency: 'KES',
+              email: customerEmail,
+              publicKey,
+              useClientInline: true,
+              warning: paystackData.message,
+            });
+          }
           return res.status(400).json({
             error: paystackData.message || 'Payment initialization was rejected by Paystack.',
             code: 'PAYSTACK_REJECTED',
@@ -783,6 +900,19 @@ app.post('/api/paystack/initialize', async (req: Request, res: Response) => {
         }
       } catch (paystackErr: any) {
         console.warn('Paystack network error during init:', paystackErr?.message);
+        if (isUsablePublicKey(publicKey)) {
+          assessment.paymentStatus = 'PAYMENT_PENDING';
+          saveDatabase(db);
+          return res.json({
+            status: true,
+            reference,
+            amount: 100,
+            currency: 'KES',
+            email: customerEmail,
+            publicKey,
+            useClientInline: true,
+          });
+        }
       }
     }
 
@@ -803,7 +933,7 @@ app.post('/api/paystack/initialize', async (req: Request, res: Response) => {
     }
 
     return res.status(400).json({
-      error: 'Unable to initialize transaction with Paystack. Please ensure your PAYSTACK_SECRET_KEY is valid in Vercel.',
+      error: 'Unable to initialize transaction with Paystack. Please ensure your PAYSTACK_SECRET_KEY and PAYSTACK_PUBLIC_KEY are correctly configured in Vercel.',
       code: 'PAYSTACK_INIT_FAILED',
     });
   } catch (error: any) {
@@ -815,7 +945,7 @@ app.post('/api/paystack/initialize', async (req: Request, res: Response) => {
 });
 
 // 4. Verify Paystack Transaction on Server
-app.post('/api/paystack/verify', async (req: Request, res: Response) => {
+app.post(['/api/paystack/verify', '/paystack/verify'], async (req: Request, res: Response) => {
   try {
     const { reference, assessmentId, assessment: incomingAssessment } = req.body;
 
