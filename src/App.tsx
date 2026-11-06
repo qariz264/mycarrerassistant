@@ -65,27 +65,48 @@ export default function App() {
     // If returning from Paystack with a transaction reference
     if (reference && savedAssessmentId) {
       setIsLoading(true);
+      let cachedAssessment: any = null;
+      try {
+        const raw = localStorage.getItem('career_assistant_ke_active_data');
+        if (raw) cachedAssessment = JSON.parse(raw);
+      } catch (_) {}
+
       fetch('/api/paystack/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           reference,
           assessmentId: savedAssessmentId,
+          assessment: cachedAssessment,
         }),
       })
         .then(async (res) => {
-          const verifyData = await safeParseJson<{ status?: string }>(res);
+          const verifyData = await safeParseJson<any>(res);
           if (verifyData && verifyData.status === 'PAID') {
-            return fetch(`/api/assessments/${savedAssessmentId}`);
+            if (verifyData.assessment) {
+              return verifyData.assessment;
+            }
+            const asmtRes = await fetch(`/api/assessments/${savedAssessmentId}`);
+            return await safeParseJson<StudentAssessment>(asmtRes);
           }
-          throw new Error('Payment verification pending or unsuccessful');
+          throw new Error(verifyData?.error || 'Payment verification pending or unsuccessful');
         })
-        .then(async (res) => {
-          const fullAssessment = await safeParseJson<StudentAssessment>(res);
-          if (fullAssessment) {
+        .then(async (assessmentOrRes) => {
+          let fullAssessment: StudentAssessment | null = null;
+          if (assessmentOrRes && typeof (assessmentOrRes as any).json === 'function') {
+            fullAssessment = await safeParseJson<StudentAssessment>(assessmentOrRes as Response);
+          } else {
+            fullAssessment = assessmentOrRes as StudentAssessment;
+          }
+
+          if (fullAssessment && fullAssessment.paymentStatus === 'PAID') {
             setCurrentAssessment(fullAssessment);
-            localStorage.setItem('career_assistant_ke_active_data', JSON.stringify(fullAssessment));
+            try {
+              localStorage.setItem('career_assistant_ke_active_data', JSON.stringify(fullAssessment));
+            } catch (_) {}
             setCurrentView('report');
+          } else {
+            setCurrentView('preview');
           }
           // Clean up query parameters without reloading
           window.history.replaceState({}, document.title, window.location.pathname);

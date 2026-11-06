@@ -123,128 +123,103 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
     setVerificationStage('initiating');
 
     try {
-      const customerEmail = emailInput.trim() || `student_${assessment.id.toLowerCase()}@careerassistant.ke`;
+      const customerEmail = emailInput.trim() || `student_${assessment.id.toLowerCase().replace(/[^a-z0-9]/g, '')}@careerassistant.ke`;
       const returnUrl = `${window.location.origin}/?assessmentId=${encodeURIComponent(assessment.id)}`;
-      const localReference = `CAKE_${assessment.id.replace(/[^a-zA-Z0-9]/g, '')}_${Date.now()}`;
 
-      // Ensure Paystack popup script is available in window
-      const scriptReady = await ensurePaystackLoaded();
+      // 1. Initialize Paystack transaction on the server
+      const initRes = await fetch('/api/paystack/initialize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          assessmentId: assessment.id,
+          email: customerEmail,
+          origin: window.location.origin,
+          assessment: assessment,
+        }),
+      });
 
-      let serverPublicKey = '';
-      let serverReference = localReference;
-      let serverAuthUrl = '';
+      const initData = await safeParseJson<any>(initRes);
 
-      // 1. Send initialization signal to backend with full assessment data (graceful if backend is unavailable)
-      try {
-        const initRes = await fetch('/api/paystack/initialize', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            assessmentId: assessment.id,
-            email: customerEmail,
-            origin: window.location.origin,
-            assessment: assessment,
-          }),
-        });
-
-        const initData = await safeParseJson<any>(initRes);
-
-        if (initData) {
-          if (initData.alreadyPaid) {
-            await handleVerifyOnServer(assessment.paymentReference || 'ALREADY_PAID');
-            return;
-          }
-          if (initData.publicKey) {
-            serverPublicKey = initData.publicKey;
-          }
-          if (initData.reference) {
-            serverReference = initData.reference;
-          }
-          if (initData.authorization_url) {
-            serverAuthUrl = initData.authorization_url;
-            setAuthUrl(initData.authorization_url);
-          }
-        }
-      } catch (backendErr) {
-        console.warn('Backend paystack/initialize deferred, launching direct Paystack Inline:', backendErr);
+      if (!initRes.ok || !initData?.status) {
+        setIsProcessing(false);
+        setVerificationStage('failed');
+        setErrorMessage(
+          initData?.error || 
+          'Payment service is currently unavailable. Please check that PAYSTACK_SECRET_KEY and PAYSTACK_PUBLIC_KEY are configured in your Vercel Environment Variables.'
+        );
+        return;
       }
 
-      const effectiveReference = serverReference || localReference;
-      setCurrentReference(effectiveReference);
+      if (initData.alreadyPaid) {
+        await handleVerifyOnServer(assessment.paymentReference || 'ALREADY_PAID');
+        return;
+      }
 
-      // Key is retrieved dynamically from the backend server at runtime (never baked into client bundle)
-      let effectivePublicKey =
-        (serverPublicKey && !serverPublicKey.includes('demo') && !serverPublicKey.includes('sample') ? serverPublicKey : '') ||
-        (paystackConfig?.publicKey && !paystackConfig.publicKey.includes('demo') && !paystackConfig.publicKey.includes('sample') ? paystackConfig.publicKey : '');
-
-      // If not yet cached, retrieve directly from server config API
-      if (!effectivePublicKey) {
+      const activeRef = initData.reference;
+      if (activeRef) {
+        setCurrentReference(activeRef);
         try {
-          const cfgRes = await fetch('/api/paystack/config');
-          const cfgData = await safeParseJson<any>(cfgRes);
-          if (cfgData?.publicKey && !cfgData.publicKey.includes('demo') && !cfgData.publicKey.includes('sample')) {
-            effectivePublicKey = cfgData.publicKey;
-          }
+          localStorage.setItem('career_assistant_ke_active_ref', activeRef);
+          localStorage.setItem('career_assistant_ke_active_id', assessment.id);
+          localStorage.setItem('career_assistant_ke_active_data', JSON.stringify(assessment));
         } catch (_) {}
       }
 
-      if (!effectivePublicKey) {
-        if (serverAuthUrl) {
-          window.location.href = serverAuthUrl;
+      // 2. Official hosted payment redirect to Paystack interface
+      if (initData.authorization_url) {
+        setAuthUrl(initData.authorization_url);
+        window.location.href = initData.authorization_url;
+        return;
+      }
+
+      // 3. Client inline modal fallback if public key is supplied
+      if (initData.publicKey) {
+        const scriptReady = await ensurePaystackLoaded();
+        if (scriptReady && window.PaystackPop) {
+          setVerificationStage('awaiting_payment');
+          setIsProcessing(false);
+
+          const handler = window.PaystackPop.setup({
+            key: initData.publicKey,
+            email: customerEmail,
+            amount: 10000, // KSh 100 in cents/kobo
+            currency: 'KES',
+            ref: activeRef,
+            callback_url: `${returnUrl}&reference=${encodeURIComponent(activeRef)}`,
+            metadata: {
+              assessmentId: assessment.id,
+              studentName: assessment.studentName,
+              custom_fields: [
+                { display_name: "Student Name", variable_name: "student_name", value: assessment.studentName },
+                { display_name: "KCSE Year", variable_name: "kcse_year", value: String(assessment.kcseYear) }
+              ]
+            },
+            callback: function (response: any) {
+              const confirmedRef = response?.reference || response?.trxnref || activeRef;
+              handleVerifyOnServer(confirmedRef);
+            },
+            onClose: function () {
+              setIsProcessing(false);
+              setVerificationStage('awaiting_payment');
+            },
+          });
+          handler.openIframe();
           return;
         }
-        setVerificationStage('failed');
-        setErrorMessage('Payment service is currently unavailable. Please ensure PAYSTACK_PUBLIC_KEY is configured in your server environment.');
-        setIsProcessing(false);
-        return;
       }
 
-      // Launch Paystack Inline modal in browser
-      if (scriptReady && window.PaystackPop && effectivePublicKey) {
-        setVerificationStage('awaiting_payment');
-        setIsProcessing(false);
-
-        const handler = window.PaystackPop.setup({
-          key: effectivePublicKey,
-          email: customerEmail,
-          amount: 10000, // KSh 100 in cents/kobo
-          currency: 'KES',
-          ref: effectiveReference,
-          callback_url: `${returnUrl}&reference=${encodeURIComponent(effectiveReference)}`,
-          metadata: {
-            assessmentId: assessment.id,
-            studentName: assessment.studentName,
-            custom_fields: [
-              { display_name: "Student Name", variable_name: "student_name", value: assessment.studentName },
-              { display_name: "KCSE Year", variable_name: "kcse_year", value: String(assessment.kcseYear) }
-            ]
-          },
-          callback: function (response: any) {
-            const confirmedRef = response?.reference || response?.trxnref || effectiveReference;
-            handleVerifyOnServer(confirmedRef);
-          },
-          onClose: function () {
-            setIsProcessing(false);
-            setVerificationStage('awaiting_payment');
-          },
-        });
-        handler.openIframe();
-        return;
-      }
-
-      // Default awaiting payment state
       setVerificationStage('awaiting_payment');
       setIsProcessing(false);
     } catch (err: any) {
-      console.warn('Initialization error:', err);
+      console.error('Initialization error:', err);
       setVerificationStage('failed');
-      setErrorMessage('Network error preparing checkout. Please check your connection and click Pay Now.');
+      setErrorMessage(err?.message || 'Network error preparing checkout. Please check your connection and click Proceed to Pay again.');
       setIsProcessing(false);
     }
   };
 
-  // Step 2: Secure Server-Side Verification with Client Confirmation Fallback
-  const handleVerifyOnServer = async (ref: string) => {
+  // Step 2: Strict Server-Side Verification with Paystack API
+  const handleVerifyOnServer = async (ref?: string) => {
     const targetRef = ref || manualReference.trim() || currentReference;
     if (!targetRef) {
       setErrorMessage('Please enter your transaction reference.');
@@ -278,9 +253,9 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
           fullAssessment = await safeParseJson<any>(fullRes);
         }
 
-        const confirmed = fullAssessment || {
+        const confirmed: StudentAssessment = fullAssessment || {
           ...assessment,
-          paymentStatus: 'PAID' as const,
+          paymentStatus: 'PAID',
           isUnlocked: true,
           paidAmount: 100,
           paidAt: new Date().toISOString(),
@@ -296,49 +271,21 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
           onPaymentSuccess(confirmed);
         }, 600);
         return;
-      } else if (verifyData && verifyData.error && !ref) {
-        // If manually entered and server rejected
-        setVerificationStage('failed');
-        setErrorMessage(verifyData.error || 'Payment not finalized yet. Please complete payment.');
-        setIsProcessing(false);
-        return;
       }
+
+      // Verification failed or was rejected by Paystack
+      setVerificationStage('failed');
+      setErrorMessage(
+        verifyData?.error || 
+        'Payment could not be verified by Paystack. Please ensure payment was completed and retry.'
+      );
+      setIsProcessing(false);
     } catch (err: any) {
-      console.warn('Verification request network issue:', err);
+      console.error('Verification request network issue:', err);
+      setVerificationStage('failed');
+      setErrorMessage('Network error checking payment status with server. Please check your connection and retry.');
+      setIsProcessing(false);
     }
-
-    // If payment was completed through Paystack popup (ref passed from callback)
-    if (ref) {
-      setVerificationStage('success');
-      const unlockedLocal: StudentAssessment = {
-        ...assessment,
-        paymentStatus: 'PAID',
-        isUnlocked: true,
-        paidAmount: 100,
-        paidAt: new Date().toISOString(),
-        paymentReference: targetRef,
-      };
-
-      try {
-        localStorage.setItem('career_assistant_ke_active_data', JSON.stringify(unlockedLocal));
-      } catch (_) {}
-
-      // Background sync to server
-      fetch('/api/assessments/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(unlockedLocal),
-      }).catch(() => {});
-
-      setTimeout(() => {
-        onPaymentSuccess(unlockedLocal);
-      }, 600);
-      return;
-    }
-
-    setVerificationStage('failed');
-    setErrorMessage('Transaction could not be verified yet. Please ensure payment went through and retry.');
-    setIsProcessing(false);
   };
 
   return (
@@ -540,7 +487,7 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
                     className="w-full py-2.5 px-4 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
                   >
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>I Have Completed Payment — Verify & Unlock</span>
+                    <span>I Have Completed Payment — Verify Status</span>
                   </button>
 
                   <button

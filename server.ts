@@ -50,10 +50,15 @@ export interface PaystackKeysInfo {
   isLive: boolean;
 }
 
+export function cleanKey(val?: string): string {
+  if (!val) return '';
+  return val.trim().replace(/^["']|["']$/g, '').trim();
+}
+
 export function isUsableSecretKey(key?: string): boolean {
   if (!key) return false;
-  const k = key.trim();
-  if (k.length < 25) return false;
+  const k = cleanKey(key);
+  if (k.length < 20) return false;
   if (
     k.includes('YOUR_PAYSTACK') ||
     k.includes('xxxx') ||
@@ -67,40 +72,63 @@ export function isUsableSecretKey(key?: string): boolean {
   return k.startsWith('sk_test_') || k.startsWith('sk_live_');
 }
 
+export function isUsablePublicKey(key?: string): boolean {
+  if (!key) return false;
+  const k = cleanKey(key);
+  if (k.length < 20) return false;
+  if (
+    k.includes('YOUR_PAYSTACK') ||
+    k.includes('xxxx') ||
+    k.includes('sample') ||
+    k.includes('demo') ||
+    k.includes('pending') ||
+    k.includes('••••')
+  ) {
+    return false;
+  }
+  return k.startsWith('pk_test_') || k.startsWith('pk_live_');
+}
+
 export function getPaystackKeys(): PaystackKeysInfo {
-  // 1. Check custom runtime configuration file
+  // 1. Check custom runtime configuration file if present
   try {
     if (fs.existsSync(PAYSTACK_CONFIG_FILE)) {
       const data = JSON.parse(fs.readFileSync(PAYSTACK_CONFIG_FILE, 'utf-8'));
-      if (data.publicKey && data.secretKey) {
-        const pub = String(data.publicKey).trim();
-        const sec = String(data.secretKey).trim();
-        return {
-          publicKey: pub,
-          secretKey: sec,
-          source: 'custom',
-          isConfigured: true,
-          isTest: pub.startsWith('pk_test_') || sec.startsWith('sk_test_'),
-          isLive: pub.startsWith('pk_live_') || sec.startsWith('sk_live_'),
-        };
+      if (data.publicKey || data.secretKey) {
+        const pub = cleanKey(data.publicKey);
+        const sec = cleanKey(data.secretKey);
+        const hasPub = isUsablePublicKey(pub);
+        const hasSec = isUsableSecretKey(sec);
+        if (hasPub || hasSec) {
+          return {
+            publicKey: pub,
+            secretKey: sec,
+            source: 'custom',
+            isConfigured: true,
+            isTest: pub.startsWith('pk_test_') || sec.startsWith('sk_test_'),
+            isLive: pub.startsWith('pk_live_') || sec.startsWith('sk_live_'),
+          };
+        }
       }
     }
   } catch (err) {
     console.warn('Could not read paystack-config.json:', err);
   }
 
-  // 2. Check process.env
-  const envPublic = process.env.PAYSTACK_PUBLIC_KEY?.trim();
-  const envSecret = process.env.PAYSTACK_SECRET_KEY?.trim();
-  const isRealPublic = envPublic && !envPublic.includes('demo') && !envPublic.includes('sample');
-  const isRealSecret = envSecret && 
-    !envSecret.includes('demo') && 
-    !envSecret.includes('sample') && 
-    !envSecret.includes('YOUR_PAYSTACK') && 
-    !envSecret.includes('xxxx') && 
-    !envSecret.includes('••••');
+  // 2. Check process.env (Vercel Environment Variables: PAYSTACK_PUBLIC_KEY, PAYSTACK_SECRET_KEY)
+  const envPublic = cleanKey(
+    process.env.PAYSTACK_PUBLIC_KEY || 
+    process.env.VITE_PAYSTACK_PUBLIC_KEY
+  );
+  const envSecret = cleanKey(
+    process.env.PAYSTACK_SECRET_KEY || 
+    process.env.PAYSTACK_SECRET
+  );
 
-  if (isRealPublic && isRealSecret) {
+  const hasRealPublic = isUsablePublicKey(envPublic);
+  const hasRealSecret = isUsableSecretKey(envSecret);
+
+  if (hasRealPublic || hasRealSecret) {
     return {
       publicKey: envPublic,
       secretKey: envSecret,
@@ -111,27 +139,13 @@ export function getPaystackKeys(): PaystackKeysInfo {
     };
   }
 
-  // If public key is live/custom from env
-  if (isRealPublic) {
-    return {
-      publicKey: envPublic,
-      secretKey: envSecret || 'sk_live_pending',
-      source: 'env',
-      isConfigured: true,
-      isTest: envPublic.startsWith('pk_test_'),
-      isLive: envPublic.startsWith('pk_live_'),
-    };
-  }
-
-  // 3. Fallback to demo/sandbox key
-  const fallbackPub = envPublic || 'pk_test_career_ke_demo_key';
-  const fallbackSec = envSecret || 'sk_test_career_ke_demo_key';
+  // 3. Fallback when keys are not yet configured
   return {
-    publicKey: fallbackPub,
-    secretKey: fallbackSec,
+    publicKey: envPublic || '',
+    secretKey: envSecret || '',
     source: 'demo',
     isConfigured: false,
-    isTest: true,
+    isTest: false,
     isLive: false,
   };
 }
@@ -663,9 +677,11 @@ app.post('/api/paystack/initialize', async (req: Request, res: Response) => {
       });
     }
 
-    const reference = `CAKE_${assessment.id.replace(/[^a-zA-Z0-9]/g, '')}_${Date.now()}`;
-    const amountInKobo = 10000; // 100 KES = 10000 cents/kobo
-    const customerEmail = email || assessment.studentEmail || `student_${assessment.id.toLowerCase()}@careerassistant.ke`;
+    // Unique payment reference for every transaction
+    const uniqueToken = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const reference = `CAKE_${assessment.id.replace(/[^a-zA-Z0-9]/g, '')}_${uniqueToken}`;
+    const amountInKobo = 10000; // KSh 100 in smallest currency unit (cents/kobo)
+    const customerEmail = email || assessment.studentEmail || `student_${assessment.id.toLowerCase().replace(/[^a-z0-9]/g, '')}@careerassistant.ke`;
 
     // Determine return callback URL so Paystack redirects back to Career Assistant KE
     const rawOrigin = req.body.origin || req.headers.origin || req.headers.referer || process.env.APP_URL || '';
@@ -685,7 +701,14 @@ app.post('/api/paystack/initialize', async (req: Request, res: Response) => {
     const { secretKey, publicKey, isConfigured } = getPaystackKeys();
     const hasUsableSecret = isConfigured && isUsableSecretKey(secretKey);
 
-    // If configured with real/test Paystack secret key, try official Paystack API initialization
+    if (!hasUsableSecret && !isUsablePublicKey(publicKey)) {
+      return res.status(400).json({
+        error: 'Paystack is not configured in this environment. Please configure PAYSTACK_SECRET_KEY and PAYSTACK_PUBLIC_KEY in your Vercel project environment variables.',
+        code: 'PAYSTACK_NOT_CONFIGURED',
+      });
+    }
+
+    // 1. If configured with real/test Paystack secret key, initiate official Paystack hosted checkout
     if (hasUsableSecret) {
       try {
         const payload: any = {
@@ -716,10 +739,13 @@ app.post('/api/paystack/initialize', async (req: Request, res: Response) => {
           body: JSON.stringify(payload),
         });
 
-        let paystackData = await response.json();
+        let paystackData: any = null;
+        try {
+          paystackData = await response.json();
+        } catch (_) {}
 
-        // If merchant account does not support KES, fallback to default account currency
-        if (!paystackData.status && paystackData.message && paystackData.message.toLowerCase().includes('currency')) {
+        // If merchant account in Paystack requires default currency instead of explicit KES
+        if (paystackData && !paystackData.status && paystackData.message && paystackData.message.toLowerCase().includes('currency')) {
           delete payload.currency;
           response = await fetch('https://api.paystack.co/transaction/initialize', {
             method: 'POST',
@@ -732,7 +758,7 @@ app.post('/api/paystack/initialize', async (req: Request, res: Response) => {
           paystackData = await response.json();
         }
 
-        if (paystackData.status && paystackData.data) {
+        if (paystackData?.status && paystackData?.data?.authorization_url) {
           assessment.paymentStatus = 'PAYMENT_PENDING';
           saveDatabase(db);
           return res.json({
@@ -747,34 +773,43 @@ app.post('/api/paystack/initialize', async (req: Request, res: Response) => {
             callback_url,
           });
         }
+
+        if (paystackData && paystackData.status === false) {
+          console.error('Paystack initialization rejected:', paystackData);
+          return res.status(400).json({
+            error: paystackData.message || 'Payment initialization was rejected by Paystack.',
+            code: 'PAYSTACK_REJECTED',
+          });
+        }
       } catch (paystackErr: any) {
-        console.warn('Paystack network error during init, client popup will be used:', paystackErr?.message);
+        console.warn('Paystack network error during init:', paystackErr?.message);
       }
     }
 
-    // Default fast client inline initialization (Uses Public Key directly in browser)
-    assessment.paymentStatus = 'PAYMENT_PENDING';
-    saveDatabase(db);
+    // 2. Client inline initialization fallback if public key is available
+    if (isUsablePublicKey(publicKey)) {
+      assessment.paymentStatus = 'PAYMENT_PENDING';
+      saveDatabase(db);
 
-    return res.json({
-      status: true,
-      reference,
-      amount: 100,
-      currency: 'KES',
-      email: customerEmail,
-      publicKey: publicKey || '',
-      useClientInline: true,
+      return res.json({
+        status: true,
+        reference,
+        amount: 100,
+        currency: 'KES',
+        email: customerEmail,
+        publicKey: publicKey,
+        useClientInline: true,
+      });
+    }
+
+    return res.status(400).json({
+      error: 'Unable to initialize transaction with Paystack. Please ensure your PAYSTACK_SECRET_KEY is valid in Vercel.',
+      code: 'PAYSTACK_INIT_FAILED',
     });
   } catch (error: any) {
     console.error('Error initializing payment:', error);
-    const { publicKey } = getPaystackKeys();
-    return res.json({
-      status: true,
-      reference: `CAKE_${Date.now()}`,
-      amount: 100,
-      currency: 'KES',
-      publicKey: publicKey || '',
-      useClientInline: true,
+    return res.status(500).json({
+      error: error?.message || 'Server error initializing payment with Paystack',
     });
   }
 });
@@ -842,20 +877,24 @@ app.post('/api/paystack/verify', async (req: Request, res: Response) => {
     let isVerified = false;
     let verifiedAmount = 100;
     let gatewayMessage = '';
+    let verifiedCurrency = 'KES';
+    let verifiedPaidAt = new Date().toISOString();
 
     const { secretKey, isConfigured } = getPaystackKeys();
     const hasUsableSecret = isConfigured && isUsableSecretKey(secretKey);
 
-    // Test/simulation tokens bypass live API call (supports rapid QA and sandbox test keys)
+    // Test simulation tokens (only accepted in non-production environments)
     const isExplicitTestReference = 
-      reference.startsWith('TEST_') || 
-      reference.startsWith('DEMO_') || 
-      reference.startsWith('SIM_') || 
-      reference.startsWith('SANDBOX_') ||
-      reference === 'ALREADY_PAID';
+      (reference.startsWith('TEST_') || 
+       reference.startsWith('SIM_') || 
+       reference === 'ALREADY_PAID') &&
+      process.env.NODE_ENV !== 'production';
 
-    // Verify against Paystack API if usable secret key is configured and not a simulated token
-    if (hasUsableSecret && !isExplicitTestReference) {
+    if (isExplicitTestReference) {
+      isVerified = true;
+      verifiedAmount = 100;
+      gatewayMessage = 'Test simulation verified';
+    } else if (hasUsableSecret) {
       try {
         let verifyData: any = null;
         let attempts = 0;
@@ -869,14 +908,17 @@ app.post('/api/paystack/verify', async (req: Request, res: Response) => {
               Authorization: `Bearer ${secretKey}`,
             },
           });
-          verifyData = await verifyRes.json();
+          
+          try {
+            verifyData = await verifyRes.json();
+          } catch (_) {
+            verifyData = null;
+          }
 
-          // Paystack transaction statuses: 'success', 'abandoned', 'failed', 'ongoing', 'pending', 'processing'
           if (verifyData?.status && verifyData?.data?.status === 'success') {
             break;
           }
 
-          // If payment was just submitted and is still pending/ongoing on Paystack, retry briefly
           const currStatus = verifyData?.data?.status;
           if (currStatus === 'ongoing' || currStatus === 'pending' || currStatus === 'processing') {
             if (attempts < maxAttempts) {
@@ -890,30 +932,37 @@ app.post('/api/paystack/verify', async (req: Request, res: Response) => {
 
         if (verifyData?.status && verifyData?.data && verifyData?.data?.status === 'success') {
           const rawAmount = Number(verifyData.data.amount) || 0;
-          // Subunits: 10000 = KSh 100 (or major units: 100)
+          // Subunits: 10000 = KSh 100 (or major unit: 100)
           if (rawAmount >= 100) {
             isVerified = true;
             verifiedAmount = rawAmount >= 1000 ? rawAmount / 100 : rawAmount;
             gatewayMessage = verifyData.data.gateway_response || 'Approved';
+            verifiedCurrency = verifyData.data.currency || 'KES';
+            if (verifyData.data.paid_at) {
+              verifiedPaidAt = verifyData.data.paid_at;
+            }
           } else {
-            return res.status(400).json({ error: `Paid amount (${rawAmount}) is below required KSh 100 fee.` });
+            return res.status(400).json({ 
+              error: `Paid amount (${rawAmount / 100} KES) is below the required KSh 100 fee.`,
+              status: 'amount_mismatch'
+            });
           }
         } else {
-          // Paystack did NOT confirm success.
+          // Paystack did NOT confirm success
           const txStatus = verifyData?.data?.status;
           const gatewayResp = verifyData?.data?.gateway_response;
 
           let userReason = '';
           if (txStatus === 'abandoned') {
-            userReason = 'Payment was not finalized (window was closed or cancelled). Please click "Pay Now" to finish your transaction.';
+            userReason = 'Payment was abandoned or cancelled. Please click "Proceed to Pay" to complete your transaction on Paystack.';
           } else if (txStatus === 'ongoing' || txStatus === 'pending' || txStatus === 'processing') {
-            userReason = 'Transaction is currently processing. Please wait a few moments and click Verify again.';
+            userReason = 'Transaction is currently processing on the payment network. Please wait a few moments and click "I Have Completed Payment — Verify Status" again.';
           } else if (txStatus === 'failed') {
-            userReason = `Payment declined: ${gatewayResp || 'Card/mobile payment could not be processed.'}`;
+            userReason = `Payment was declined: ${gatewayResp || 'The card or mobile payment could not be processed.'}`;
           } else if (verifyData?.status === false) {
-            userReason = `Payment reference not found: ${verifyData?.message || 'Check reference'}`;
+            userReason = verifyData?.message || `Transaction reference "${reference}" could not be found on Paystack.`;
           } else {
-            userReason = gatewayResp || (txStatus ? `Transaction status: ${txStatus}` : 'Payment was not completed.');
+            userReason = gatewayResp || (txStatus ? `Transaction status: ${txStatus}` : 'Payment could not be verified.');
           }
 
           if (txStatus === 'failed') {
@@ -930,42 +979,35 @@ app.post('/api/paystack/verify', async (req: Request, res: Response) => {
           });
         }
       } catch (liveErr: any) {
-        console.warn('Network error during secret verification, checking client confirmation:', liveErr?.message);
-        // If live verification network timed out but client had Paystack success:
-        isVerified = true;
-        verifiedAmount = 100;
-        gatewayMessage = 'Client verified via Paystack callback';
+        console.error('Error during Paystack API verification:', liveErr);
+        return res.status(502).json({
+          error: 'Unable to reach Paystack to verify payment status. Please check your connection and retry.',
+          status: 'gateway_unreachable',
+        });
       }
     } else {
-      // In sandbox/test environment OR when only public key is available:
-      if (
-        isExplicitTestReference || 
-        reference.startsWith('CAKE_') || 
-        reference.includes(assessmentId) || 
-        reference.length > 5 ||
-        !hasUsableSecret
-      ) {
-        isVerified = true;
-        verifiedAmount = 100;
-        gatewayMessage = hasUsableSecret ? 'Test payment simulated with test key' : 'Paystack verified successfully';
-      }
+      return res.status(400).json({
+        error: 'Paystack secret key is not configured in the server environment. Please configure PAYSTACK_SECRET_KEY in your Vercel Environment Variables to verify transactions.',
+        status: 'config_missing',
+      });
     }
 
     if (isVerified) {
       const nowIso = new Date().toISOString();
       assessment.paymentStatus = 'PAID';
+      assessment.isUnlocked = true;
       assessment.paymentReference = reference;
       assessment.paidAmount = verifiedAmount;
-      assessment.paidAt = nowIso;
+      assessment.paidAt = verifiedPaidAt || nowIso;
       assessment.updatedAt = nowIso;
 
       db.paymentLogs.push({
         reference,
-        assessmentId,
+        assessmentId: assessment.id,
         amount: verifiedAmount,
-        currency: 'KES',
+        currency: verifiedCurrency,
         status: 'success',
-        verifiedAt: nowIso,
+        verifiedAt: assessment.paidAt,
         gatewayResponse: gatewayMessage,
       });
 
@@ -974,7 +1016,9 @@ app.post('/api/paystack/verify', async (req: Request, res: Response) => {
       return res.json({
         success: true,
         status: 'PAID',
+        isUnlocked: true,
         assessmentId: assessment.id,
+        assessment,
         message: 'Payment verified successfully. Full career report unlocked!',
       });
     }
