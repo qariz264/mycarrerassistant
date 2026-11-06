@@ -153,7 +153,8 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
 
       if (!initRes.ok || !initData?.status) {
         // Fallback: If server-side init fails or returns error, check if a usable public key is available
-        const fallbackPublicKey = initData?.publicKey || paystackConfig?.publicKey;
+        const envPublicKey = (typeof import.meta !== 'undefined' && import.meta.env && ((import.meta.env as any).VITE_PAYSTACK_PUBLIC_KEY || (import.meta.env as any).VITE_PAYSTACK_KEY)) || '';
+        const fallbackPublicKey = initData?.publicKey || paystackConfig?.publicKey || envPublicKey;
         if (fallbackPublicKey && fallbackPublicKey.startsWith('pk_')) {
           const activeRef = `CAKE_${assessment.id.replace(/[^a-zA-Z0-9]/g, '')}_${Date.now()}`;
           setCurrentReference(activeRef);
