@@ -159,7 +159,7 @@ const weakMathAssessment = runFullCareerAssessment(
 );
 
 assert(weakMathAssessment.meanGrade === 'B+' || weakMathAssessment.meanGrade === 'A-', `Mean grade should be high, got ${weakMathAssessment.meanGrade}`);
-const engProg = weakMathAssessment.detailedResults?.eligibleProgrammes.find(p => p.programmeName.includes('Electrical and Electronic'));
+const engProg = weakMathAssessment.detailedResults?.eligibleProgrammes.find(p => p.level === 'Degree' && p.programmeName.includes('Electrical and Electronic'));
 assert(engProg === undefined, 'Student with D+ in Math must NOT be marked eligible for Electrical Engineering degree');
 const lawProg = weakMathAssessment.detailedResults?.eligibleProgrammes.find(p => p.programmeName.includes('Laws'));
 assert(lawProg !== undefined, 'Student with strong English and History should qualify for Law despite weak Math in Engineering');

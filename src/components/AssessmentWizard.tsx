@@ -86,14 +86,11 @@ export const AssessmentWizard: React.FC<AssessmentWizardProps> = ({ onComplete, 
   // Step 3: Career Fields & Interests (Multi-select)
   const [selectedDomain, setSelectedDomain] = useState<string>('ALL');
   const [interestSearch, setInterestSearch] = useState<string>('');
-  const [selectedHobbies, setSelectedHobbies] = useState<string[]>([
-    'Software Development & Coding',
-    'Artificial Intelligence & Data Science',
-  ]);
+  const [selectedHobbies, setSelectedHobbies] = useState<string[]>([]);
   const [otherHobby, setOtherHobby] = useState<string>('');
 
   // Step 4: Intended Course(s) (Allows single or multiple choices)
-  const [selectedIntendedCourses, setSelectedIntendedCourses] = useState<string[]>(['Computer Science']);
+  const [selectedIntendedCourses, setSelectedIntendedCourses] = useState<string[]>([]);
   const [courseSearch, setCourseSearch] = useState<string>('');
 
   // Step validation error message
@@ -176,7 +173,11 @@ export const AssessmentWizard: React.FC<AssessmentWizardProps> = ({ onComplete, 
   // Toggle intended course (supports multi-selection or undecided)
   const handleToggleIntendedCourse = (course: string) => {
     if (course === "I don't know yet") {
-      setSelectedIntendedCourses(["I don't know yet"]);
+      if (selectedIntendedCourses.includes("I don't know yet")) {
+        setSelectedIntendedCourses([]);
+      } else {
+        setSelectedIntendedCourses(["I don't know yet"]);
+      }
       return;
     }
 
@@ -187,18 +188,11 @@ export const AssessmentWizard: React.FC<AssessmentWizardProps> = ({ onComplete, 
       updated.push(course);
     }
 
-    if (updated.length === 0) {
-      updated = ["I don't know yet"];
-    }
-
     setSelectedIntendedCourses(updated);
   };
 
   const handleRemoveIntendedCourse = (course: string) => {
-    let updated = selectedIntendedCourses.filter(c => c !== course);
-    if (updated.length === 0) {
-      updated = ["I don't know yet"];
-    }
+    const updated = selectedIntendedCourses.filter(c => c !== course);
     setSelectedIntendedCourses(updated);
   };
 

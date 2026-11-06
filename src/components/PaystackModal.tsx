@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
   X, 
-  ShieldCheck, 
   Smartphone, 
   AlertCircle, 
   CheckCircle2, 
@@ -133,6 +132,7 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
 
       let serverPublicKey = '';
       let serverReference = localReference;
+      let serverAuthUrl = '';
 
       // 1. Send initialization signal to backend with full assessment data (graceful if backend is unavailable)
       try {
@@ -161,6 +161,7 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
             serverReference = initData.reference;
           }
           if (initData.authorization_url) {
+            serverAuthUrl = initData.authorization_url;
             setAuthUrl(initData.authorization_url);
           }
         }
@@ -171,15 +172,29 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
       const effectiveReference = serverReference || localReference;
       setCurrentReference(effectiveReference);
 
-      // Read public key strictly from gitignored environment variable or secure server config
-      const effectivePublicKey =
+      // Key is retrieved dynamically from the backend server at runtime (never baked into client bundle)
+      let effectivePublicKey =
         (serverPublicKey && !serverPublicKey.includes('demo') && !serverPublicKey.includes('sample') ? serverPublicKey : '') ||
-        (paystackConfig?.publicKey && !paystackConfig.publicKey.includes('demo') && !paystackConfig.publicKey.includes('sample') ? paystackConfig.publicKey : '') ||
-        ((import.meta.env.VITE_PAYSTACK_PUBLIC_KEY as string) || '').trim();
+        (paystackConfig?.publicKey && !paystackConfig.publicKey.includes('demo') && !paystackConfig.publicKey.includes('sample') ? paystackConfig.publicKey : '');
+
+      // If not yet cached, retrieve directly from server config API
+      if (!effectivePublicKey) {
+        try {
+          const cfgRes = await fetch('/api/paystack/config');
+          const cfgData = await safeParseJson<any>(cfgRes);
+          if (cfgData?.publicKey && !cfgData.publicKey.includes('demo') && !cfgData.publicKey.includes('sample')) {
+            effectivePublicKey = cfgData.publicKey;
+          }
+        } catch (_) {}
+      }
 
       if (!effectivePublicKey) {
+        if (serverAuthUrl) {
+          window.location.href = serverAuthUrl;
+          return;
+        }
         setVerificationStage('failed');
-        setErrorMessage('Paystack Public Key not configured. Please add VITE_PAYSTACK_PUBLIC_KEY in your .env or environment settings.');
+        setErrorMessage('Payment service is currently unavailable. Please ensure PAYSTACK_PUBLIC_KEY is configured in your server environment.');
         setIsProcessing(false);
         return;
       }
@@ -339,47 +354,15 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
           <X className="w-5 h-5" />
         </button>
 
-        {/* Modal Header */}
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-800">
-            <ShieldCheck className="w-4 h-4 text-emerald-600" />
-            <span>Secure Checkout</span>
-          </div>
-          <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-            Instant Unlock
-          </span>
-        </div>
-
-        <h2 className="text-xl sm:text-2xl font-bold text-slate-900 mb-1">
-          Unlock Full Career Report
+        {/* Checkout Header */}
+        <h2 className="text-xl sm:text-2xl font-bold text-slate-900 mb-4">
+          Proceed to Pay
         </h2>
-        <p className="text-xs text-slate-500 mb-4">
-          Access complete course-by-course KUCCPS analysis, university cut-offs, and downloadable PDF report.
-        </p>
 
-        {/* Amount Box */}
-        <div className="flex items-center justify-between p-4 rounded-xl bg-slate-50 border border-slate-200 mb-4">
-          <div>
-            <div className="text-xs text-slate-500">Total Payable</div>
-            <div className="text-2xl font-black text-slate-900 font-mono">KSh 100</div>
-          </div>
-          <div className="text-right">
-            <span className="text-[11px] text-emerald-700 font-semibold block">One-time payment</span>
-            <span className="text-[10px] text-slate-500">Includes PDF Download</span>
-          </div>
-        </div>
-
-        {/* Secure Checkout Assurance Banner */}
-        <div className="mb-5 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs">
-          <div className="flex items-center gap-2">
-            <span className="flex h-2 w-2 rounded-full bg-emerald-500"></span>
-            <span className="text-slate-700 font-medium text-xs">
-              M-Pesa · Airtel Money · Visa · Mastercard
-            </span>
-          </div>
-          <span className="text-[10px] text-slate-400 font-mono">
-            256-Bit SSL
-          </span>
+        {/* Amount Display */}
+        <div className="flex items-center justify-between p-4 rounded-xl bg-slate-50 border border-slate-200 mb-5">
+          <span className="text-sm font-medium text-slate-700">Amount</span>
+          <span className="text-2xl font-bold text-slate-900 font-mono">KSh 100</span>
         </div>
 
         {/* STAGES */}
@@ -490,7 +473,7 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-slate-700">
-                    Mobile Phone (M-Pesa / Contact)
+                    Phone Number (Optional)
                   </label>
                   <input
                     type="tel"
@@ -532,7 +515,7 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
                 {authUrl ? (
                   <div className="space-y-3">
                     <p className="text-xs text-slate-600 leading-relaxed">
-                      Complete your payment via M-Pesa or Card. If the payment window was closed, click below:
+                      Complete your payment. If the payment window was closed, click below:
                     </p>
                     <a
                       href={authUrl}
@@ -594,17 +577,6 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
                   </button>
                 </div>
               </details>
-            </div>
-
-            {/* Security info footer */}
-            <div className="pt-3 border-t border-slate-200 text-[11px] text-slate-500 flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Supports M-Pesa, Airtel Money & Card</span>
-              </div>
-              <span className="text-[10px] text-slate-400">
-                256-Bit SSL Encrypted
-              </span>
             </div>
 
           </div>
