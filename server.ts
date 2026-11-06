@@ -24,16 +24,31 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Ensure req.body is always an object even if empty or pre-parsed by serverless proxy
+app.use((req, _res, next) => {
+  if (req.body && typeof req.body === 'string') {
+    try {
+      req.body = JSON.parse(req.body);
+    } catch (_) {}
+  }
+  if (!req.body || typeof req.body !== 'object') {
+    req.body = {};
+  }
+  next();
+});
+
 // Normalize incoming request URLs for Vercel Serverless Function rewrites & proxying
 app.use((req, _res, next) => {
   if (req.url) {
     try {
-      if (req.url.startsWith('/api/index.ts') || req.url.startsWith('/api/index')) {
+      if (req.url.startsWith('/api/index.ts') || req.url.startsWith('/api/index') || req.url.startsWith('/api?')) {
         const q0 = (req.query as any)?.['0'] || (req.query && Object.values(req.query)[0]);
         if (typeof q0 === 'string' && q0) {
           const search = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
           req.url = `/api/${q0.replace(/^\//, '')}${search}`;
         }
+      } else if (!req.url.startsWith('/api') && !req.url.startsWith('/sitemap') && !req.url.startsWith('/robots')) {
+        req.url = `/api${req.url.startsWith('/') ? '' : '/'}${req.url}`;
       }
     } catch (_) {}
   }
@@ -1380,17 +1395,34 @@ app.delete('/api/admin/programmes/:id', requireAdmin, (req: Request, res: Respon
 });
 
 // --------------------------------------------------------------------------------
-// VITE MIDDLEWARE SETUP
+// GLOBAL EXPRESS ERROR HANDLER
+// --------------------------------------------------------------------------------
+app.use((err: any, _req: Request, res: Response, _next: any) => {
+  console.error('Unhandled server error:', err);
+  if (res.headersSent) return;
+  return res.status(500).json({
+    error: err?.message || 'Internal server error processing request',
+    code: 'SERVER_ERROR',
+  });
+});
+
+// --------------------------------------------------------------------------------
+// DEV SERVER & STANDALONE LISTENER
 // --------------------------------------------------------------------------------
 async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
-    const { createServer } = await import('vite');
-    const vite = await createServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
+  if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+    try {
+      const vitePkg = 'vite';
+      const { createServer } = await import(/* @vite-ignore */ vitePkg);
+      const vite = await createServer({
+        server: { middlewareMode: true },
+        appType: 'spa',
+      });
+      app.use(vite.middlewares);
+    } catch (e) {
+      console.warn('Vite dev middleware not loaded:', e);
+    }
+  } else if (!process.env.VERCEL) {
     app.use(express.static(path.join(__dirname, 'dist')));
     app.get('*', (_req, res) => {
       res.sendFile(path.join(__dirname, 'dist', 'index.html'));
@@ -1416,3 +1448,4 @@ if (isDirectExecution) {
 
 export default app;
 export { app };
+
