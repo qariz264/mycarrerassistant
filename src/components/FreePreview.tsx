@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { StudentAssessment } from '../types';
 import { isGradeEqualOrHigher } from '../lib/clusterCalculator';
+import { INITIAL_PROGRAMMES } from '../data/kuccpsData';
+import { runFullCareerAssessment } from '../lib/recommendationEngine';
 
 interface FreePreviewProps {
   assessment: StudentAssessment;
@@ -31,10 +33,50 @@ export const FreePreview: React.FC<FreePreviewProps> = ({
 }) => {
   const summary = assessment.previewSummary;
   const isDegreeEligible = isGradeEqualOrHigher(assessment.meanGrade, 'C+');
-  const results = assessment.detailedResults;
-  const sampleTopMatches = (results?.fieldMatchProgrammes || results?.topRecommendations || results?.eligibleProgrammes || []).slice(0, 3);
-  const totalEligibleCount = (results?.eligibleProgrammes || []).length;
-  const fieldMatchesCount = (results?.fieldMatchProgrammes || []).length;
+
+  // Ensure detailed evaluation results are populated
+  let results = assessment.detailedResults;
+  if (!results || !results.eligibleProgrammes || results.eligibleProgrammes.length === 0) {
+    try {
+      const computed = runFullCareerAssessment(
+        {
+          studentName: assessment.studentName,
+          studentEmail: assessment.studentEmail,
+          studentPhone: assessment.studentPhone,
+          kcseYear: assessment.kcseYear,
+          indexNumber: assessment.indexNumber,
+          subjects: assessment.subjects,
+          hobbies: assessment.hobbies || [],
+          otherHobby: assessment.otherHobby,
+          intendedCourse: assessment.intendedCourse || "I don't know yet",
+        },
+        INITIAL_PROGRAMMES
+      );
+      results = computed.detailedResults;
+    } catch (_) {}
+  }
+
+  const allEligible = results?.eligibleProgrammes || [];
+  const fieldMatches = results?.fieldMatchProgrammes || [];
+  const totalEligibleCount = allEligible.length;
+  const fieldMatchesCount = fieldMatches.length;
+
+  // 1. Qualified Degree Courses: filter all Degree level programmes
+  const qualifiedDegrees = allEligible.filter((p) => p.level === 'Degree');
+  
+  // Prioritize degree courses in student's chosen career fields first
+  const fieldMatchDegrees = fieldMatches.filter((p) => p.level === 'Degree');
+  const otherEligibleDegrees = qualifiedDegrees.filter(
+    (d) => !fieldMatchDegrees.some((fd) => fd.programmeId === d.programmeId)
+  );
+  const prioritizedDegrees = [...fieldMatchDegrees, ...otherEligibleDegrees];
+
+  // Guarantee at least 2 qualified degree courses in preview when student qualifies for degrees
+  const sampleDegreeMatches = prioritizedDegrees.slice(0, Math.max(2, Math.min(prioritizedDegrees.length, 3)));
+
+  // Qualified Diploma/TVET sample (for students progressing through diploma pathways)
+  const qualifiedDiplomas = allEligible.filter((p) => p.level === 'Diploma' || p.level === 'Certificate');
+  const sampleDiplomaMatches = qualifiedDiplomas.slice(0, 3);
 
   return (
     <div className="min-h-screen bg-slate-50 py-6 sm:py-10 px-3 sm:px-6 lg:px-8 w-full overflow-x-hidden">
@@ -153,76 +195,138 @@ export const FreePreview: React.FC<FreePreviewProps> = ({
           </div>
         </div>
 
-        {/* SECTION 2: TEASER SNIPPET OF TOP MATCHING COURSES (LOCKED CUT-OFFS) */}
+        {/* SECTION 2: TEASER SNIPPET OF QUALIFIED COURSES (AT LEAST 2 QUALIFIED DEGREE COURSES) */}
         <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-7 shadow-xs space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 gap-2">
             <div>
-              <h3 className="text-base font-bold text-slate-900">
-                2. Preview Sample: Top Qualifying Course Matches
-              </h3>
-              <p className="text-xs text-slate-500">
-                Showing 3 of {totalEligibleCount || '150+'} qualifying choices. Specific university cut-off margins & campus allocations are unlocked in full report.
+              <div className="flex items-center gap-2">
+                <GraduationCap className="w-5 h-5 text-sky-600" />
+                <h3 className="text-base font-bold text-slate-900">
+                  {sampleDegreeMatches.length >= 2 
+                    ? "2. Preview Sample: Qualified Degree Courses" 
+                    : "2. Preview Sample: Top Qualifying Courses"}
+                </h3>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {sampleDegreeMatches.length >= 2
+                  ? `Listing ${sampleDegreeMatches.length} of ${summary.potentialDegreeMatches} qualified degree courses you meet KNEC & KUCCPS requirements for:`
+                  : `Showing ${sampleDiplomaMatches.length} of ${totalEligibleCount || '150+'} qualifying pathways for your academic profile:`}
               </p>
             </div>
-            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1">
+            <span className="self-start sm:self-auto px-2.5 py-1 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1">
               <Lock className="w-3 h-3 text-amber-600" />
-              <span>Full Cut-Offs Locked</span>
+              <span>Full University Cut-Offs Locked</span>
             </span>
           </div>
 
-          <div className="space-y-3">
-            {sampleTopMatches.map((prog, idx) => (
-              <div 
-                key={prog.programmeId || idx} 
-                className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-50 transition-colors"
-              >
-                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 mb-2">
-                  <div>
-                    <div className="flex items-center gap-2 text-xs mb-1">
-                      <span className="font-mono text-sky-600 font-bold">{prog.programmeCode}</span>
-                      <span className="text-slate-300">·</span>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-white text-slate-700 border border-slate-200">
-                        {prog.level}
-                      </span>
-                      <span className="text-slate-300">·</span>
-                      <span className="text-slate-500">{prog.category}</span>
-                      {prog.isFieldMatch && (
-                        <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                          In Your Field
+          {/* Qualified Degree Courses Preview (Guaranteed at least 2 when degree qualified) */}
+          {sampleDegreeMatches.length > 0 ? (
+            <div className="space-y-3">
+              {sampleDegreeMatches.map((prog, idx) => (
+                <div 
+                  key={prog.programmeId || idx} 
+                  className="p-4 rounded-xl border border-sky-100 bg-sky-50/40 hover:bg-sky-50/70 transition-colors"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 mb-2">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs mb-1">
+                        <span className="font-mono text-sky-700 font-bold bg-white px-2 py-0.5 rounded border border-sky-200">
+                          {prog.programmeCode}
                         </span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-600 text-white shadow-2xs">
+                          {prog.level}
+                        </span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-white text-slate-700 border border-slate-200">
+                          {prog.category}
+                        </span>
+                        {prog.isFieldMatch && (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            🎯 In Your Field
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-sm sm:text-base font-bold text-slate-900 mt-1">
+                        {prog.programmeName}
+                      </div>
+                      {prog.programmeCluster && (
+                        <div className="text-[11px] text-slate-500 mt-0.5">
+                          {prog.programmeCluster}
+                        </div>
                       )}
                     </div>
-                    <div className="text-sm font-bold text-slate-900">{prog.programmeName}</div>
-                  </div>
 
-                  <span className="self-start sm:self-auto px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-                    <Check className="w-3 h-3 text-emerald-600" />
-                    <span>Academically Qualified</span>
-                  </span>
-                </div>
-
-                {/* Locked University Cut-Offs Preview Box */}
-                <div className="p-2.5 rounded-lg bg-white border border-dashed border-slate-300 flex items-center justify-between text-xs text-slate-600">
-                  <div className="flex items-center gap-2">
-                    <Building2 className="w-4 h-4 text-slate-400" />
-                    <span className="text-slate-500">
-                      Offered at <strong className="text-slate-800">{prog.institutionCount || 'Multiple'} Universities</strong> across Kenya
+                    <span className="self-start sm:self-auto px-2.5 py-1 rounded text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1 shrink-0">
+                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Academically Qualified</span>
                     </span>
                   </div>
-                  <button 
-                    onClick={onUnlock}
-                    className="inline-flex items-center gap-1 text-[11px] font-bold text-sky-600 hover:text-sky-700 cursor-pointer"
-                  >
-                    <Lock className="w-3 h-3 text-amber-500" />
-                    <span>Unlock Cut-Off Points</span>
-                  </button>
+
+                  {/* Locked University Cut-Offs Preview Box */}
+                  <div className="p-3 rounded-lg bg-white border border-dashed border-slate-300 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-600 mt-2">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-sky-600 shrink-0" />
+                      <span>
+                        Offered at <strong className="text-slate-900">{prog.institutionCount || '30+'} Universities</strong> across Kenya (UoN, KU, JKUAT, Moi & more)
+                      </span>
+                    </div>
+                    <button 
+                      onClick={onUnlock}
+                      className="inline-flex items-center gap-1 text-[11px] font-bold text-sky-600 hover:text-sky-700 cursor-pointer self-start sm:self-auto hover:underline"
+                    >
+                      <Lock className="w-3 h-3 text-amber-500" />
+                      <span>Unlock Cut-Off Points</span>
+                    </button>
+                  </div>
                 </div>
+              ))}
+            </div>
+          ) : (
+            /* For students with mean grade below C+ */
+            <div className="space-y-3">
+              <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
+                <strong>KUCCPS Degree Admission Note:</strong> National direct degree placement requires a KCSE Mean Grade of C+ and above. Your Mean Grade of <strong>{summary.meanGrade}</strong> directly qualifies for accredited Diploma and TVET progression pathways below:
               </div>
-            ))}
-          </div>
+              {sampleDiplomaMatches.map((prog, idx) => (
+                <div 
+                  key={prog.programmeId || idx} 
+                  className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-50 transition-colors"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 mb-2">
+                    <div>
+                      <div className="flex items-center gap-2 text-xs mb-1">
+                        <span className="font-mono text-sky-600 font-bold">{prog.programmeCode}</span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-white text-slate-700 border border-slate-200">
+                          {prog.level}
+                        </span>
+                        <span className="text-slate-500">{prog.category}</span>
+                      </div>
+                      <div className="text-sm font-bold text-slate-900">{prog.programmeName}</div>
+                    </div>
+                    <span className="self-start sm:self-auto px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                      <Check className="w-3 h-3 text-emerald-600" />
+                      <span>Academically Qualified</span>
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-white border border-dashed border-slate-300 flex items-center justify-between text-xs text-slate-600">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-slate-400" />
+                      <span>Offered across National Polytechnics & Technical Colleges in Kenya</span>
+                    </div>
+                    <button 
+                      onClick={onUnlock}
+                      className="inline-flex items-center gap-1 text-[11px] font-bold text-sky-600 hover:text-sky-700 cursor-pointer"
+                    >
+                      <Lock className="w-3 h-3 text-amber-500" />
+                      <span>Unlock Campus List</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="p-3 rounded-xl bg-sky-50/70 border border-sky-200 text-xs text-sky-900 text-center font-medium">
-            + Over <strong className="font-bold">{Math.max(0, totalEligibleCount - 3)} additional qualifying programmes</strong> in Medicine, Engineering, Computing, Business, Law, Education, Agriculture & TVET waiting for you in the full report.
+            + Over <strong className="font-bold">{Math.max(0, totalEligibleCount - (sampleDegreeMatches.length || sampleDiplomaMatches.length))} additional qualifying choices</strong> in Computing, Medicine, Engineering, Business, Law, Education, Agriculture & TVET waiting for you in the full report.
           </div>
         </div>
 
