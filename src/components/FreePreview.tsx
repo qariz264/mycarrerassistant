@@ -1,25 +1,14 @@
 import React from 'react';
 import { 
-  Lock, 
   ArrowRight, 
-  CheckCircle2, 
-  Building2, 
-  ShieldCheck,
-  Sparkles,
-  GraduationCap,
-  FileDown,
-  Layers,
-  BookOpen,
-  Check,
-  CreditCard,
-  Smartphone,
-  Phone
+  FileDown
 } from 'lucide-react';
 import { StudentAssessment } from '../types';
 import { isGradeEqualOrHigher } from '../lib/clusterCalculator';
 import { INITIAL_PROGRAMMES } from '../data/kuccpsData';
 import { runFullCareerAssessment } from '../lib/recommendationEngine';
 import { generateCareerReportPDF } from '../lib/pdfGenerator';
+import { rankProgrammesByStudentInterest } from '../lib/interestRanking';
 
 interface FreePreviewProps {
   assessment: StudentAssessment;
@@ -65,19 +54,18 @@ export const FreePreview: React.FC<FreePreviewProps> = ({
   // 1. Qualified Degree Courses: filter all Degree level programmes
   const qualifiedDegrees = allEligible.filter((p) => p.level === 'Degree');
   
-  // Prioritize degree courses in student's chosen career fields first
-  const fieldMatchDegrees = fieldMatches.filter((p) => p.level === 'Degree');
-  const otherEligibleDegrees = qualifiedDegrees.filter(
-    (d) => !fieldMatchDegrees.some((fd) => fd.programmeId === d.programmeId)
-  );
-  const prioritizedDegrees = [...fieldMatchDegrees, ...otherEligibleDegrees];
+  // Rank degree courses strictly by student's chosen career fields, intended course & passions
+  // If the student chose computing (or medicine, engineering, business, etc.), courses in that field
+  // they qualify for appear first!
+  const rankedDegrees = rankProgrammesByStudentInterest(qualifiedDegrees, assessment);
 
   // Guarantee at least 2 qualified degree courses in preview when student qualifies for degrees
-  const sampleDegreeMatches = prioritizedDegrees.slice(0, Math.max(2, Math.min(prioritizedDegrees.length, 3)));
+  const sampleDegreeMatches = rankedDegrees.slice(0, Math.max(2, Math.min(rankedDegrees.length, 3)));
 
-  // Qualified Diploma/TVET sample (for students progressing through diploma pathways)
+  // Qualified Diploma/TVET sample (ranked with the exact same interest alignment)
   const qualifiedDiplomas = allEligible.filter((p) => p.level === 'Diploma' || p.level === 'Certificate');
-  const sampleDiplomaMatches = qualifiedDiplomas.slice(0, 3);
+  const rankedDiplomas = rankProgrammesByStudentInterest(qualifiedDiplomas, assessment);
+  const sampleDiplomaMatches = rankedDiplomas.slice(0, 3);
 
   return (
     <div className="min-h-screen bg-slate-50 py-6 sm:py-10 px-3 sm:px-6 lg:px-8 w-full overflow-x-hidden">
@@ -85,8 +73,7 @@ export const FreePreview: React.FC<FreePreviewProps> = ({
         
         {/* Banner */}
         <div className="text-center space-y-2">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-sky-50 text-sky-700 border border-sky-200">
-            <Sparkles className="w-3.5 h-3.5 text-sky-600" />
+          <div className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider bg-sky-50 text-sky-700 border border-sky-200">
             <span>Preliminary Assessment Snippet</span>
           </div>
           <h1 className="text-2xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
@@ -101,14 +88,13 @@ export const FreePreview: React.FC<FreePreviewProps> = ({
         <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-7 shadow-xs space-y-5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-slate-200">
             <div>
-              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <span>1. Academic Performance & Cluster Summary</span>
+              <h2 className="text-base font-bold text-slate-900">
+                1. Academic Performance & Cluster Summary
               </h2>
               <span className="text-xs text-slate-500">Ref Code: <strong className="font-mono text-slate-700">{assessment.id}</strong></span>
             </div>
-            <span className="self-start sm:self-auto px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Verified 7-Subject KNEC Profile</span>
+            <span className="self-start sm:self-auto px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              Verified 7-Subject KNEC Profile
             </span>
           </div>
 
@@ -123,9 +109,9 @@ export const FreePreview: React.FC<FreePreviewProps> = ({
               </div>
               <div className="text-[11px] text-slate-500 mt-1">
                 {isDegreeEligible ? (
-                  <span className="text-emerald-700 font-semibold">✓ Meets C+ national degree threshold</span>
+                  <span className="text-emerald-700 font-semibold">Meets C+ national degree threshold</span>
                 ) : (
-                  <span className="text-amber-700 font-semibold">✓ Qualifies for Diploma & TVET placement</span>
+                  <span className="text-amber-700 font-semibold">Qualifies for Diploma & TVET placement</span>
                 )}
               </div>
             </div>
@@ -146,8 +132,8 @@ export const FreePreview: React.FC<FreePreviewProps> = ({
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs text-slate-500 font-medium">Selected Career Fields & Passions</span>
                 {fieldMatchesCount > 0 && (
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                    🎯 {fieldMatchesCount} Matching Programmes Found
+                  <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                    {fieldMatchesCount} Matching Programmes Found
                   </span>
                 )}
               </div>
@@ -164,7 +150,7 @@ export const FreePreview: React.FC<FreePreviewProps> = ({
               </div>
               {assessment.intendedCourse && (
                 <div className="mt-2.5 pt-2 border-t border-slate-200 text-xs text-slate-600 flex items-center gap-1.5">
-                  <span className="text-slate-400">Target Course:</span>
+                  <span className="text-slate-400">Target Choice:</span>
                   <strong className="text-slate-900">{assessment.intendedCourse}</strong>
                 </div>
               )}
@@ -196,27 +182,23 @@ export const FreePreview: React.FC<FreePreviewProps> = ({
           </div>
         </div>
 
-        {/* SECTION 2: TEASER SNIPPET OF QUALIFIED COURSES (AT LEAST 2 QUALIFIED DEGREE COURSES) */}
+        {/* SECTION 2: TEASER SNIPPET OF QUALIFIED COURSES (ALIGNED TO STUDENT INTEREST) */}
         <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-7 shadow-xs space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 gap-2">
             <div>
-              <div className="flex items-center gap-2">
-                <GraduationCap className="w-5 h-5 text-sky-600" />
-                <h3 className="text-base font-bold text-slate-900">
-                  {sampleDegreeMatches.length >= 2 
-                    ? "2. Preview Sample: Qualified Degree Courses" 
-                    : "2. Preview Sample: Top Qualifying Courses"}
-                </h3>
-              </div>
+              <h3 className="text-base font-bold text-slate-900">
+                {sampleDegreeMatches.length >= 2 
+                  ? "2. Preview Sample: Qualified Degree Courses" 
+                  : "2. Preview Sample: Top Qualifying Courses"}
+              </h3>
               <p className="text-xs text-slate-500 mt-0.5">
                 {sampleDegreeMatches.length >= 2
-                  ? `Listing ${sampleDegreeMatches.length} of ${summary.potentialDegreeMatches} qualified degree courses you meet KNEC & KUCCPS requirements for:`
+                  ? `Showing top qualified degree courses aligned with your academic profile and interests (${summary.potentialDegreeMatches} total qualified):`
                   : `Showing ${sampleDiplomaMatches.length} of ${totalEligibleCount || '150+'} qualifying pathways for your academic profile:`}
               </p>
             </div>
-            <span className="self-start sm:self-auto px-2.5 py-1 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1">
-              <Lock className="w-3 h-3 text-amber-600" />
-              <span>Full University Cut-Offs Locked</span>
+            <span className="self-start sm:self-auto px-2.5 py-1 rounded text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+              Full University Cut-Offs Locked
             </span>
           </div>
 
@@ -241,8 +223,8 @@ export const FreePreview: React.FC<FreePreviewProps> = ({
                           {prog.category}
                         </span>
                         {prog.isFieldMatch && (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                            🎯 In Your Field
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            In Your Field
                           </span>
                         )}
                       </div>
@@ -256,26 +238,21 @@ export const FreePreview: React.FC<FreePreviewProps> = ({
                       )}
                     </div>
 
-                    <span className="self-start sm:self-auto px-2.5 py-1 rounded text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1 shrink-0">
-                      <Check className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Academically Qualified</span>
+                    <span className="self-start sm:self-auto px-2.5 py-1 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                      Academically Qualified
                     </span>
                   </div>
 
                   {/* Locked University Cut-Offs Preview Box */}
                   <div className="p-3 rounded-lg bg-white border border-dashed border-slate-300 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-600 mt-2">
-                    <div className="flex items-center gap-2">
-                      <Building2 className="w-4 h-4 text-sky-600 shrink-0" />
-                      <span>
-                        Offered at <strong className="text-slate-900">{prog.institutionCount || '30+'} Universities</strong> across Kenya (UoN, KU, JKUAT, Moi & more)
-                      </span>
+                    <div>
+                      Offered at <strong className="text-slate-900">{prog.institutionCount || '30+'} Universities</strong> across Kenya (UoN, KU, JKUAT, Moi & more)
                     </div>
                     <button 
                       onClick={onUnlock}
-                      className="inline-flex items-center gap-1 text-[11px] font-bold text-sky-600 hover:text-sky-700 cursor-pointer self-start sm:self-auto hover:underline"
+                      className="text-[11px] font-bold text-sky-600 hover:text-sky-700 cursor-pointer self-start sm:self-auto hover:underline"
                     >
-                      <Lock className="w-3 h-3 text-amber-500" />
-                      <span>Unlock Cut-Off Points</span>
+                      Unlock Cut-Off Points
                     </button>
                   </div>
                 </div>
@@ -284,8 +261,8 @@ export const FreePreview: React.FC<FreePreviewProps> = ({
           ) : (
             /* For students with mean grade below C+ */
             <div className="space-y-3">
-              <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
-                <strong>KUCCPS Degree Admission Note:</strong> National direct degree placement requires a KCSE Mean Grade of C+ and above. Your Mean Grade of <strong>{summary.meanGrade}</strong> directly qualifies for accredited Diploma and TVET progression pathways below:
+              <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 leading-relaxed">
+                <strong className="font-semibold">KUCCPS Admission Note:</strong> National direct degree placement requires a KCSE Mean Grade of C+ and above. Your Mean Grade of <strong>{summary.meanGrade}</strong> directly qualifies for accredited Diploma and TVET progression pathways below:
               </div>
               {sampleDiplomaMatches.map((prog, idx) => (
                 <div 
@@ -303,22 +280,19 @@ export const FreePreview: React.FC<FreePreviewProps> = ({
                       </div>
                       <div className="text-sm font-bold text-slate-900">{prog.programmeName}</div>
                     </div>
-                    <span className="self-start sm:self-auto px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-                      <Check className="w-3 h-3 text-emerald-600" />
-                      <span>Academically Qualified</span>
+                    <span className="self-start sm:self-auto px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      Academically Qualified
                     </span>
                   </div>
                   <div className="p-2.5 rounded-lg bg-white border border-dashed border-slate-300 flex items-center justify-between text-xs text-slate-600">
-                    <div className="flex items-center gap-2">
-                      <Building2 className="w-4 h-4 text-slate-400" />
-                      <span>Offered across National Polytechnics & Technical Colleges in Kenya</span>
+                    <div>
+                      Offered across National Polytechnics & Technical Colleges in Kenya
                     </div>
                     <button 
                       onClick={onUnlock}
-                      className="inline-flex items-center gap-1 text-[11px] font-bold text-sky-600 hover:text-sky-700 cursor-pointer"
+                      className="text-[11px] font-bold text-sky-600 hover:text-sky-700 cursor-pointer hover:underline"
                     >
-                      <Lock className="w-3 h-3 text-amber-500" />
-                      <span>Unlock Campus List</span>
+                      Unlock Campus List
                     </button>
                   </div>
                 </div>
@@ -332,12 +306,8 @@ export const FreePreview: React.FC<FreePreviewProps> = ({
         </div>
 
         {/* SECTION 3: UNLOCK FULL REPORT CARD (KSH 100) */}
-        <div className="relative rounded-2xl bg-white border border-slate-200 p-6 sm:p-8 shadow-sm overflow-hidden">
+        <div className="relative rounded-2xl bg-white border border-slate-200 p-6 sm:p-8 shadow-xs">
           <div className="max-w-xl mx-auto text-center space-y-5">
-            
-            <div className="w-12 h-12 rounded-xl bg-sky-50 text-sky-600 border border-sky-100 flex items-center justify-center mx-auto shadow-2xs">
-              <ShieldCheck className="w-6 h-6" />
-            </div>
 
             <div>
               <div className="flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-700">
@@ -363,27 +333,27 @@ export const FreePreview: React.FC<FreePreviewProps> = ({
               
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs text-slate-700">
                 <div className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span className="font-bold text-sky-600">·</span>
                   <span><strong>All 150+ Qualifying Courses</strong> with zero artificial caps or limits.</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span className="font-bold text-sky-600">·</span>
                   <span><strong>Courses in Your Field Prioritized</strong> and highlighted first.</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span className="font-bold text-sky-600">·</span>
                   <span><strong>Cut-Off Points Breakdown</strong> for every course across Kenyan universities.</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span className="font-bold text-sky-600">·</span>
                   <span><strong>Access All 514 Institutions</strong> with campus search & details modal.</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span className="font-bold text-sky-600">·</span>
                   <span><strong>Official KUCCPS 4-Choice Worksheet</strong> with 1-click slot assignment.</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span className="font-bold text-sky-600">·</span>
                   <span><strong>Downloadable & Printable Official PDF</strong> to keep and share with family.</span>
                 </div>
               </div>
@@ -393,15 +363,14 @@ export const FreePreview: React.FC<FreePreviewProps> = ({
             <div className="pt-2 space-y-3">
               {assessment.paymentStatus === 'PAID' || assessment.isUnlocked ? (
                 <div className="space-y-2.5">
-                  <div className="text-xs font-bold text-emerald-600 flex items-center justify-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Payment Confirmed — Full Report Unlocked</span>
+                  <div className="text-xs font-semibold text-emerald-700">
+                    Payment Confirmed — Full Report Unlocked
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <button
                       type="button"
                       onClick={onUnlock}
-                      className="w-full py-3.5 px-4 text-sm font-bold text-white bg-sky-600 hover:bg-sky-500 active:bg-sky-700 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+                      className="w-full py-3.5 px-4 text-sm font-bold text-white bg-sky-600 hover:bg-sky-500 active:bg-sky-700 rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
                     >
                       <span>View Full Career Report</span>
                       <ArrowRight className="w-4 h-4" />
@@ -421,24 +390,17 @@ export const FreePreview: React.FC<FreePreviewProps> = ({
                   type="button"
                   onClick={onUnlock}
                   disabled={isLoadingPayment}
-                  className="w-full py-3.5 sm:py-4 px-4 sm:px-6 text-sm sm:text-base font-bold text-white bg-sky-600 hover:bg-sky-500 active:bg-sky-700 rounded-xl shadow-md shadow-sky-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="w-full py-3.5 sm:py-4 px-4 sm:px-6 text-sm sm:text-base font-bold text-white bg-sky-600 hover:bg-sky-500 active:bg-sky-700 rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                 >
-                  <Lock className="w-4 h-4 text-sky-200 shrink-0" />
                   <span className="truncate sm:whitespace-normal">Unlock & Download Full Report (KSh 100)</span>
                   <ArrowRight className="w-4 h-4 shrink-0" />
                 </button>
               )}
 
               <div className="flex flex-wrap items-center justify-center gap-3 text-[11px] text-slate-500">
-                <span className="flex items-center gap-1 font-semibold text-emerald-700">
-                  <Smartphone className="w-3.5 h-3.5" />
-                  <span>M-Pesa Express & Paybill</span>
-                </span>
+                <span className="font-semibold text-emerald-700">M-Pesa Express & Paybill</span>
                 <span>·</span>
-                <span className="flex items-center gap-1 font-semibold text-slate-700">
-                  <CreditCard className="w-3.5 h-3.5" />
-                  <span>Visa & Mastercard</span>
-                </span>
+                <span className="font-semibold text-slate-700">Visa & Mastercard</span>
                 <span>·</span>
                 <span className="text-slate-600 font-medium">Instant PDF Download</span>
               </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Printer, 
   ArrowLeft, 
@@ -41,6 +41,7 @@ import { isGradeEqualOrHigher } from '../lib/clusterCalculator';
 import { ALL_514_KENYAN_INSTITUTIONS } from '../data/kenyanInstitutions';
 import { runFullCareerAssessment } from '../lib/recommendationEngine';
 import { INITIAL_PROGRAMMES } from '../data/kuccpsData';
+import { calculateCourseInterestScore } from '../lib/interestRanking';
 
 export type KuccpsSlot = 'Choice 1a' | 'Choice 1b' | 'Choice 1c' | 'Choice 2' | 'Choice 3' | 'Choice 4';
 
@@ -83,7 +84,7 @@ export const FullReport: React.FC<FullReportProps> = ({ assessment, onBackToHome
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [sortBy, setSortBy] = useState<'FIT' | 'NAME' | 'CLUSTER' | 'GRADE'>('FIT');
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [pageSize, setPageSize] = useState<number | 'ALL'>('ALL'); // Default to listing ALL without limits
+  const [pageSize, setPageSize] = useState<number | 'ALL'>(25); // Fast initial render with instant pagination
 
   // Selected programme for detailed requirements modal
   const [selectedProgramme, setSelectedProgramme] = useState<ProgrammeEligibilityResult | null>(null);
@@ -371,49 +372,61 @@ export const FullReport: React.FC<FullReportProps> = ({ assessment, onBackToHome
   // Available categories
   const categories = Array.from(new Set(allEvaluations.map(p => p.category))).sort();
 
-  // Filter programmes based on active tab
-  let sourceList: ProgrammeEligibilityResult[] = [];
-  if (activeTab === 'FIELD_ONLY') sourceList = fieldMatchesList;
-  else if (activeTab === 'ALL_QUALIFYING') sourceList = allEligible;
-  else if (activeTab === 'DEGREE') sourceList = allEligible.filter(p => p.level === 'Degree');
-  else if (activeTab === 'DIPLOMA') sourceList = allEligible.filter(p => p.level === 'Diploma');
-  else if (activeTab === 'TVET') sourceList = allEligible.filter(p => p.level === 'Certificate' || p.level === 'Artisan' || p.level === 'TVET');
-  else if (activeTab === 'COMPETITIVE') sourceList = competitiveList;
-  else if (activeTab === 'ASPIRATIONAL') sourceList = aspirationalList;
-  else if (activeTab === 'TOP_RECOMMENDED') sourceList = topRecommendations;
-  else if (activeTab === 'OTHER_ONLY') sourceList = otherEligibleList;
-  else if (activeTab === 'UNMET') sourceList = unmetList;
+  // Filter programmes based on active tab (memoized for instantaneous tab switching)
+  const sourceList = useMemo<ProgrammeEligibilityResult[]>(() => {
+    if (activeTab === 'FIELD_ONLY') return fieldMatchesList;
+    if (activeTab === 'ALL_QUALIFYING') return allEligible;
+    if (activeTab === 'DEGREE') return allEligible.filter(p => p.level === 'Degree');
+    if (activeTab === 'DIPLOMA') return allEligible.filter(p => p.level === 'Diploma');
+    if (activeTab === 'TVET') return allEligible.filter(p => p.level === 'Certificate' || p.level === 'Artisan' || p.level === 'TVET');
+    if (activeTab === 'COMPETITIVE') return competitiveList;
+    if (activeTab === 'ASPIRATIONAL') return aspirationalList;
+    if (activeTab === 'TOP_RECOMMENDED') return topRecommendations;
+    if (activeTab === 'OTHER_ONLY') return otherEligibleList;
+    if (activeTab === 'UNMET') return unmetList;
+    return allEligible;
+  }, [activeTab, fieldMatchesList, allEligible, competitiveList, aspirationalList, topRecommendations, otherEligibleList, unmetList]);
 
-  // Filter by category and search query
-  const filteredProgrammes = sourceList.filter(prog => {
-    const matchesCategory = selectedCategory === 'ALL' || prog.category === selectedCategory;
+  // Filter by category and search query (memoized)
+  const filteredProgrammes = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
-    const matchesSearch = !q || 
-      prog.programmeName.toLowerCase().includes(q) ||
-      prog.programmeCode.toLowerCase().includes(q) ||
-      prog.category.toLowerCase().includes(q) ||
-      (prog.programmeCluster && prog.programmeCluster.toLowerCase().includes(q)) ||
-      (prog.matchedFieldNames && prog.matchedFieldNames.some(f => f.toLowerCase().includes(q)));
-    return matchesCategory && matchesSearch;
-  });
+    return sourceList.filter(prog => {
+      const matchesCategory = selectedCategory === 'ALL' || prog.category === selectedCategory;
+      const matchesSearch = !q || 
+        prog.programmeName.toLowerCase().includes(q) ||
+        prog.programmeCode.toLowerCase().includes(q) ||
+        prog.category.toLowerCase().includes(q) ||
+        (prog.programmeCluster && prog.programmeCluster.toLowerCase().includes(q)) ||
+        (prog.matchedFieldNames && prog.matchedFieldNames.some(f => f.toLowerCase().includes(q)));
+      return matchesCategory && matchesSearch;
+    });
+  }, [sourceList, selectedCategory, searchQuery]);
 
-  // Sort: When sorting by 'FIT', always prioritize field matches first!
-  const sortedProgrammes = [...filteredProgrammes].sort((a, b) => {
-    if (sortBy === 'FIT') {
-      if (a.isFieldMatch && !b.isFieldMatch) return -1;
-      if (!a.isFieldMatch && b.isFieldMatch) return 1;
-      return b.matchScore - a.matchScore;
-    }
-    if (sortBy === 'NAME') return a.programmeName.localeCompare(b.programmeName);
-    if (sortBy === 'CLUSTER') {
-      const scoreA = a.studentEstimatedClusterPoints || 0;
-      const scoreB = b.studentEstimatedClusterPoints || 0;
-      return scoreB - scoreA;
-    }
-    return 0;
-  });
+  // Sort: When sorting by 'FIT', strictly prioritize student's chosen career fields & passions
+  // e.g. if computing is selected, computing programmes appear first!
+  const sortedProgrammes = useMemo(() => {
+    return [...filteredProgrammes].sort((a, b) => {
+      if (sortBy === 'FIT') {
+        const interestA = calculateCourseInterestScore(a, assessment);
+        const interestB = calculateCourseInterestScore(b, assessment);
+        if (interestB !== interestA) {
+          return interestB - interestA;
+        }
+        if (a.isFieldMatch && !b.isFieldMatch) return -1;
+        if (!a.isFieldMatch && b.isFieldMatch) return 1;
+        return b.matchScore - a.matchScore;
+      }
+      if (sortBy === 'NAME') return a.programmeName.localeCompare(b.programmeName);
+      if (sortBy === 'CLUSTER') {
+        const scoreA = a.studentEstimatedClusterPoints || 0;
+        const scoreB = b.studentEstimatedClusterPoints || 0;
+        return scoreB - scoreA;
+      }
+      return 0;
+    });
+  }, [filteredProgrammes, sortBy, assessment]);
 
-  // Pagination & Display limit (allows viewing ALL without limits)
+  // Pagination & Display limit (allows viewing 25, 50, 100, or ALL without freezing the UI)
   const totalPages = pageSize === 'ALL' ? 1 : (Math.ceil(sortedProgrammes.length / pageSize) || 1);
   const paginatedProgrammes = pageSize === 'ALL'
     ? sortedProgrammes
@@ -1168,21 +1181,16 @@ export const FullReport: React.FC<FullReportProps> = ({ assessment, onBackToHome
                     {pIdx === 0 && prog.isFieldMatch && (
                       <div className="p-4 rounded-xl bg-gradient-to-r from-emerald-50 via-teal-50 to-white border border-emerald-200 mb-2 shadow-2xs">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-                              <Sparkles className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <h4 className="text-sm font-bold text-slate-900">
-                                Targeted Choices: Programmes in Your Chosen Fields & Interests
-                              </h4>
-                              <p className="text-xs text-slate-600">
-                                Displayed first based on your passions: <strong className="text-emerald-800">{(assessment.hobbies || []).slice(0, 4).join(', ') || assessment.intendedCourse || 'Selected Career Disciplines'}</strong>
-                              </p>
-                            </div>
+                          <div>
+                            <h4 className="text-sm font-bold text-slate-900">
+                              Targeted Choices: Programmes in Your Chosen Fields & Interests
+                            </h4>
+                            <p className="text-xs text-slate-600">
+                              Displayed first based on your passions: <strong className="text-emerald-800">{(assessment.hobbies || []).slice(0, 4).join(', ') || assessment.intendedCourse || 'Selected Career Disciplines'}</strong>
+                            </p>
                           </div>
-                          <span className="self-start sm:self-auto px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                            🎯 {paginatedProgrammes.filter(p => p.isFieldMatch).length} In Your Field
+                          <span className="self-start sm:self-auto px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            {paginatedProgrammes.filter(p => p.isFieldMatch).length} In Your Field
                           </span>
                         </div>
                       </div>
@@ -1192,21 +1200,16 @@ export const FullReport: React.FC<FullReportProps> = ({ assessment, onBackToHome
                     {pIdx === firstOtherIdx && (
                       <div className="pt-6 pb-2 border-t-2 border-slate-200 mt-6 mb-2">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-4 rounded-xl bg-slate-50 border border-slate-200">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-lg bg-sky-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-                              <GraduationCap className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <h4 className="text-sm font-bold text-slate-900">
-                                Other Approved Programmes You Qualify For Across Kenya
-                              </h4>
-                              <p className="text-xs text-slate-600">
-                                All additional accredited degrees and diplomas where your KCSE mean grade and subject requirements meet official criteria.
-                              </p>
-                            </div>
+                          <div>
+                            <h4 className="text-sm font-bold text-slate-900">
+                              Other Approved Programmes You Qualify For Across Kenya
+                            </h4>
+                            <p className="text-xs text-slate-600">
+                              All additional accredited degrees and diplomas where your KCSE mean grade and subject requirements meet official criteria.
+                            </p>
                           </div>
-                          <span className="self-start sm:self-auto px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-200 text-slate-700">
-                            🌐 {paginatedProgrammes.filter(p => !p.isFieldMatch).length} Other Courses
+                          <span className="self-start sm:self-auto px-2.5 py-1 rounded-full text-[11px] font-semibold bg-slate-200 text-slate-700">
+                            {paginatedProgrammes.filter(p => !p.isFieldMatch).length} Other Courses
                           </span>
                         </div>
                       </div>

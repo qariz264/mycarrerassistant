@@ -581,7 +581,7 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
                   type="button"
                   onClick={handleInitiatePaystack}
                   disabled={isProcessing}
-                  className="w-full py-3.5 px-4 text-sm font-bold text-white bg-sky-600 hover:bg-sky-500 active:bg-sky-700 rounded-xl shadow-md shadow-sky-600/25 transition-all flex items-center justify-center gap-2 mt-4 cursor-pointer disabled:opacity-50"
+                  className="w-full py-3.5 px-4 text-sm font-bold text-white bg-sky-600 hover:bg-sky-500 active:bg-sky-700 rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 mt-4 cursor-pointer disabled:opacity-50"
                 >
                   {isProcessing ? (
                     <>
@@ -590,7 +590,6 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
                     </>
                   ) : (
                     <>
-                      <Lock className="w-4 h-4" />
                       <span>Proceed to Pay KSh 100</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
@@ -606,9 +605,8 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
                   <button
                     type="button"
                     onClick={handleInitiatePaystack}
-                    className="w-full py-3 px-4 text-xs font-bold text-white bg-sky-600 hover:bg-sky-500 rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                    className="w-full py-3 px-4 text-xs font-bold text-white bg-sky-600 hover:bg-sky-500 rounded-xl flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer"
                   >
-                    <Lock className="w-3.5 h-3.5" />
                     <span>Retry Payment (KSh 100)</span>
                   </button>
 
@@ -650,15 +648,9 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
 
             {/* Payment security info */}
             <div className="flex items-center justify-center gap-3 pt-2 text-[11px] text-slate-500">
-              <span className="flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Secured by Paystack</span>
-              </span>
+              <span className="font-semibold text-slate-700">Secured by Paystack</span>
               <span>·</span>
-              <span className="flex items-center gap-1">
-                <Smartphone className="w-3.5 h-3.5 text-slate-600" />
-                <span>M-Pesa Express & Cards</span>
-              </span>
+              <span className="font-semibold text-emerald-700">M-Pesa Express & Cards</span>
             </div>
 
             {/* Manual reference verification option if needed */}

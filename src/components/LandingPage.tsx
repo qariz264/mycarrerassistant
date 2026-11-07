@@ -57,8 +57,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartAssessment }) =
 
           {/* Central Product Promise Callout */}
           <div className="text-sm font-medium text-slate-600 mb-8 flex items-center justify-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-            <span>No manual calculations. No endless searching.</span>
+            <span>No manual calculations. No guesswork. Official KUCCPS placement standards.</span>
           </div>
 
           {/* CTAs */}
@@ -136,11 +135,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartAssessment }) =
                 <div className="text-3xl font-bold text-emerald-600 mb-4 font-mono tabular-nums">03</div>
                 <h3 className="text-lg font-semibold text-slate-900 mb-2">Access Your Full Report</h3>
                 <p className="text-sm text-slate-600 leading-relaxed">
-                  Review your matched university and TVET programmes, institution cut-offs, alternative career bridges, and download your report completely free.
+                  Review your matched university and TVET programmes, institution cut-offs, alternative career bridges, and download your complete career report.
                 </p>
               </div>
               <div className="mt-6 pt-4 border-t border-slate-100 text-xs text-slate-500">
-                100% Free · Instant access & downloadable PDF
+                KSh 100 · Instant access & downloadable official PDF
               </div>
             </div>
           </div>
@@ -164,9 +163,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartAssessment }) =
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             <div className="p-6 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 hover:bg-white hover:shadow-xs transition-all">
-              <div className="w-10 h-10 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center mb-4">
-                <Award className="w-5 h-5" />
-              </div>
               <h4 className="text-base font-semibold text-slate-900 mb-1.5">KCSE Performance</h4>
               <p className="text-xs text-slate-600 leading-relaxed">
                 KNEC 7-subject mean grade calculation and aggregate score calculation.
@@ -174,9 +170,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartAssessment }) =
             </div>
 
             <div className="p-6 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 hover:bg-white hover:shadow-xs transition-all">
-              <div className="w-10 h-10 rounded-lg bg-teal-100 text-teal-700 flex items-center justify-center mb-4">
-                <TrendingUp className="w-5 h-5" />
-              </div>
               <h4 className="text-base font-semibold text-slate-900 mb-1.5">Cluster Points</h4>
               <p className="text-xs text-slate-600 leading-relaxed">
                 Estimated Weighted Cluster Points based on official 4-subject cluster combinations.
@@ -184,9 +177,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartAssessment }) =
             </div>
 
             <div className="p-6 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 hover:bg-white hover:shadow-xs transition-all">
-              <div className="w-10 h-10 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center mb-4">
-                <CheckCircle2 className="w-5 h-5" />
-              </div>
               <h4 className="text-base font-semibold text-slate-900 mb-1.5">Subject Prerequisites</h4>
               <p className="text-xs text-slate-600 leading-relaxed">
                 Strict verification against required subject minimums (e.g. Math C+, Bio B).
@@ -194,9 +184,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartAssessment }) =
             </div>
 
             <div className="p-6 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 hover:bg-white hover:shadow-xs transition-all">
-              <div className="w-10 h-10 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center mb-4">
-                <Building2 className="w-5 h-5" />
-              </div>
               <h4 className="text-base font-semibold text-slate-900 mb-1.5">Institution Options</h4>
               <p className="text-xs text-slate-600 leading-relaxed">
                 Access to all 514 verified Kenyan universities, TVCs, TTCs, and National Polytechnics.
@@ -204,9 +191,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartAssessment }) =
             </div>
 
             <div className="p-6 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 hover:bg-white hover:shadow-xs transition-all">
-              <div className="w-10 h-10 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center mb-4">
-                <Sparkles className="w-5 h-5" />
-              </div>
               <h4 className="text-base font-semibold text-slate-900 mb-1.5">Hobbies & Interests</h4>
               <p className="text-xs text-slate-600 leading-relaxed">
                 Signals converted from coding, machines, healthcare, design, or business into course matches.
@@ -214,9 +198,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartAssessment }) =
             </div>
 
             <div className="p-6 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 hover:bg-white hover:shadow-xs transition-all">
-              <div className="w-10 h-10 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center mb-4">
-                <Compass className="w-5 h-5" />
-              </div>
               <h4 className="text-base font-semibold text-slate-900 mb-1.5">Intended Course Fit</h4>
               <p className="text-xs text-slate-600 leading-relaxed">
                 Objective evaluation of your dream course with honest reasons if any requirement is missing.
@@ -224,9 +205,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartAssessment }) =
             </div>
 
             <div className="p-6 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 hover:bg-white hover:shadow-xs transition-all">
-              <div className="w-10 h-10 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center mb-4">
-                <BookOpen className="w-5 h-5" />
-              </div>
               <h4 className="text-base font-semibold text-slate-900 mb-1.5">TVET & Diploma Bridges</h4>
               <p className="text-xs text-slate-600 leading-relaxed">
                 Stepping-stone diplomas that allow university credit transfer if degree minimums were missed.
@@ -234,9 +212,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartAssessment }) =
             </div>
 
             <div className="p-6 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 hover:bg-white hover:shadow-xs transition-all">
-              <div className="w-10 h-10 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center mb-4">
-                <FileText className="w-5 h-5" />
-              </div>
               <h4 className="text-base font-semibold text-slate-900 mb-1.5">Downloadable PDF Report</h4>
               <p className="text-xs text-slate-600 leading-relaxed">
                 Official structured document to share with parents, sponsors, or high school teachers.
