@@ -12,6 +12,10 @@ import { GoogleGenAI } from '@google/genai';
 import { INITIAL_PROGRAMMES, KENYAN_INSTITUTIONS } from './src/data/kuccpsData.js';
 import { runFullCareerAssessment } from './src/lib/recommendationEngine.js';
 import { Programme, StudentAssessment, PaymentStatus } from './src/types/index.js';
+import { cleanKey, isUsableSecretKey, isUsablePublicKey, getPaystackKeys, type PaystackKeysInfo } from './src/lib/paystackUtils.js';
+
+export { cleanKey, isUsableSecretKey, isUsablePublicKey, getPaystackKeys };
+export type { PaystackKeysInfo };
 
 dotenv.config();
 
@@ -72,180 +76,7 @@ const DB_FILE = path.join(DATA_DIR, 'db.json');
 const PAYSTACK_CONFIG_FILE = path.join(DATA_DIR, 'paystack-config.json');
 const ADMIN_SECRET = process.env.ADMIN_SECRET || 'admin_ke_2026';
 
-export interface PaystackKeysInfo {
-  publicKey: string;
-  secretKey: string;
-  source: 'custom' | 'env' | 'demo';
-  isConfigured: boolean;
-  isTest: boolean;
-  isLive: boolean;
-}
 
-export function cleanKey(val?: string): string {
-  if (!val) return '';
-  let str = String(val).trim();
-  // Strip surrounding single, double, or backtick quotes
-  str = str.replace(/^["'`]|["'`]$/g, '').trim();
-  // Strip trailing semicolon or comma
-  str = str.replace(/[;,]$/, '').trim();
-  // Strip carriage returns, newlines, and tabs
-  str = str.replace(/[\r\n\t]/g, '').trim();
-  return str;
-}
-
-export function isUsableSecretKey(key?: string): boolean {
-  if (!key) return false;
-  const k = cleanKey(key);
-  if (k.length < 15) return false;
-  if (
-    k.includes('YOUR_PAYSTACK') ||
-    k.includes('xxxx') ||
-    k.includes('sample') ||
-    k.includes('demo') ||
-    k.includes('pending') ||
-    k.includes('••••')
-  ) {
-    return false;
-  }
-  return k.startsWith('sk_');
-}
-
-export function isUsablePublicKey(key?: string): boolean {
-  if (!key) return false;
-  const k = cleanKey(key);
-  if (k.length < 15) return false;
-  if (
-    k.includes('YOUR_PAYSTACK') ||
-    k.includes('xxxx') ||
-    k.includes('sample') ||
-    k.includes('demo') ||
-    k.includes('pending') ||
-    k.includes('••••')
-  ) {
-    return false;
-  }
-  return k.startsWith('pk_');
-}
-
-export function getPaystackKeys(): PaystackKeysInfo {
-  // 1. Check custom runtime configuration file if present
-  try {
-    if (fs.existsSync(PAYSTACK_CONFIG_FILE)) {
-      const data = JSON.parse(fs.readFileSync(PAYSTACK_CONFIG_FILE, 'utf-8'));
-      if (data.publicKey || data.secretKey) {
-        const pub = cleanKey(data.publicKey);
-        const sec = cleanKey(data.secretKey);
-        const hasPub = isUsablePublicKey(pub);
-        const hasSec = isUsableSecretKey(sec);
-        if (hasPub || hasSec) {
-          return {
-            publicKey: pub,
-            secretKey: sec,
-            source: 'custom',
-            isConfigured: true,
-            isTest: pub.startsWith('pk_test_') || sec.startsWith('sk_test_'),
-            isLive: pub.startsWith('pk_live_') || sec.startsWith('sk_live_'),
-          };
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('Could not read paystack-config.json:', err);
-  }
-
-  // 2. Check process.env (Vercel Environment Variables: PAYSTACK_PUBLIC_KEY, PAYSTACK_SECRET_KEY, and variations)
-  let rawPublic = cleanKey(
-    process.env.PAYSTACK_PUBLIC_KEY || 
-    process.env.paystack_public_key || 
-    process.env.VITE_PAYSTACK_PUBLIC_KEY || 
-    process.env.vite_paystack_public_key || 
-    process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY ||
-    process.env.PAYSTACK_PUBLIC ||
-    process.env.PAYSTACK_KEY
-  );
-  let rawSecret = cleanKey(
-    process.env.PAYSTACK_SECRET_KEY || 
-    process.env.paystack_secret_key || 
-    process.env.PAYSTACK_SECRET || 
-    process.env.paystack_secret || 
-    process.env.PAYSTACK_PRIVATE_KEY ||
-    process.env.VITE_PAYSTACK_SECRET_KEY
-  );
-
-  // Scan all process.env variables to auto-detect any Paystack keys by prefix or name
-  if (!rawSecret) {
-    for (const [key, val] of Object.entries(process.env)) {
-      if (!val) continue;
-      const upper = key.toUpperCase();
-      const cleaned = cleanKey(val);
-      if (cleaned.startsWith('sk_test_') || cleaned.startsWith('sk_live_')) {
-        rawSecret = cleaned;
-        break;
-      }
-      if (
-        upper.includes('PAYSTACK') && 
-        (upper.includes('SECRET') || upper.includes('PRIVATE') || upper.includes('SEC_KEY') || upper.includes('_SK'))
-      ) {
-        rawSecret = cleaned;
-        break;
-      }
-    }
-  }
-
-  if (!rawPublic) {
-    for (const [key, val] of Object.entries(process.env)) {
-      if (!val) continue;
-      const upper = key.toUpperCase();
-      const cleaned = cleanKey(val);
-      if (cleaned.startsWith('pk_test_') || cleaned.startsWith('pk_live_')) {
-        rawPublic = cleaned;
-        break;
-      }
-      if (
-        upper.includes('PAYSTACK') && 
-        (upper.includes('PUBLIC') || upper.includes('PUB_KEY') || upper.includes('_PK'))
-      ) {
-        rawPublic = cleaned;
-        break;
-      }
-    }
-  }
-
-  // Auto-detect and fix accidental key inversion in Vercel UI
-  if (rawPublic.startsWith('sk_') && !rawSecret.startsWith('sk_')) {
-    const temp = rawPublic;
-    rawPublic = rawSecret.startsWith('pk_') ? rawSecret : '';
-    rawSecret = temp;
-  } else if (rawSecret.startsWith('pk_') && !rawPublic.startsWith('pk_')) {
-    const temp = rawSecret;
-    rawSecret = rawPublic.startsWith('sk_') ? rawPublic : '';
-    rawPublic = temp;
-  }
-
-  const hasRealPublic = isUsablePublicKey(rawPublic);
-  const hasRealSecret = isUsableSecretKey(rawSecret);
-
-  if (hasRealPublic || hasRealSecret) {
-    return {
-      publicKey: rawPublic,
-      secretKey: rawSecret,
-      source: 'env',
-      isConfigured: true,
-      isTest: rawPublic.startsWith('pk_test_') || rawSecret.startsWith('sk_test_'),
-      isLive: rawPublic.startsWith('pk_live_') || rawSecret.startsWith('sk_live_'),
-    };
-  }
-
-  // 3. Fallback when keys are not yet configured
-  return {
-    publicKey: rawPublic || '',
-    secretKey: rawSecret || '',
-    source: 'demo',
-    isConfigured: false,
-    isTest: false,
-    isLive: false,
-  };
-}
 
 
 interface DatabaseSchema {
@@ -1436,17 +1267,11 @@ async function startServer() {
   });
 }
 
-// Only start listener if executed directly as standalone process
-const isDirectExecution = 
-  !process.env.VERCEL && 
-  !process.env.AWS_LAMBDA_FUNCTION_NAME &&
-  (Boolean(process.argv[1]?.endsWith('server.ts')) || 
-   Boolean(process.argv[1]?.endsWith('server.js')) || 
-   process.env.RUN_STANDALONE === 'true');
-
-if (isDirectExecution) {
+// Start listener for standalone/dev server (omitted only in Vercel/Lambda serverless)
+if (!process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_NAME) {
   startServer();
 }
+
 
 export default app;
 export { app };
