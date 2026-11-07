@@ -29,6 +29,55 @@ async function safeParseJson<T>(response: Response): Promise<T | null> {
   }
 }
 
+// Helper to guarantee detailedResults are never lost or downgraded to hollow skeletons
+function ensureDetailedAssessment(target: any, fallback?: any): StudentAssessment | null {
+  if (!target && !fallback) return null;
+  const merged = { ...(fallback || {}), ...(target || {}) };
+  if (!merged || !merged.id) return null;
+
+  // If detailedResults with eligible programmes is already present, return merged
+  if (merged.detailedResults && Array.isArray(merged.detailedResults.eligibleProgrammes) && merged.detailedResults.eligibleProgrammes.length > 0) {
+    return merged as StudentAssessment;
+  }
+
+  // If fallback has detailedResults, preserve them
+  if (fallback?.detailedResults?.eligibleProgrammes?.length > 0) {
+    return {
+      ...merged,
+      detailedResults: fallback.detailedResults,
+      previewSummary: fallback.previewSummary || merged.previewSummary,
+    } as StudentAssessment;
+  }
+
+  // If subjects are present, recompute the full assessment on the fly!
+  if (Array.isArray(merged.subjects) && merged.subjects.length > 0) {
+    try {
+      const calc = runFullCareerAssessment(
+        {
+          studentName: merged.studentName || 'Form Four Graduate',
+          studentEmail: merged.studentEmail,
+          studentPhone: merged.studentPhone,
+          kcseYear: parseInt(merged.kcseYear, 10) || 2025,
+          indexNumber: merged.indexNumber,
+          subjects: merged.subjects,
+          hobbies: merged.hobbies || [],
+          otherHobby: merged.otherHobby,
+          intendedCourse: merged.intendedCourse || "I don't know yet",
+        },
+        INITIAL_PROGRAMMES
+      );
+      return {
+        ...merged,
+        ...calc,
+      } as StudentAssessment;
+    } catch (e) {
+      console.warn('Recomputing assessment failed:', e);
+    }
+  }
+
+  return merged as StudentAssessment;
+}
+
 export default function App() {
   const [currentView, setCurrentView] = useState<ViewMode>('landing');
   const [currentAssessment, setCurrentAssessment] = useState<StudentAssessment | null>(null);
@@ -50,12 +99,16 @@ export default function App() {
     }
 
     // Try fast restore from localStorage cached full assessment if available
+    let cachedAssessment: StudentAssessment | null = null;
     const cachedDataStr = localStorage.getItem('career_assistant_ke_active_data');
-    if (cachedDataStr && savedAssessmentId) {
+    if (cachedDataStr) {
       try {
-        const cached = JSON.parse(cachedDataStr);
-        if (cached && (cached.id === savedAssessmentId || !paramAssessmentId)) {
-          setCurrentAssessment(cached);
+        const parsed = JSON.parse(cachedDataStr);
+        if (parsed && typeof parsed === 'object') {
+          cachedAssessment = ensureDetailedAssessment(parsed);
+          if (cachedAssessment) {
+            setCurrentAssessment(cachedAssessment);
+          }
         }
       } catch {
         // ignore parse error
@@ -63,66 +116,56 @@ export default function App() {
     }
 
     // If returning from Paystack with a transaction reference
-    if (reference && savedAssessmentId) {
+    if (reference) {
       setIsLoading(true);
-      let cachedAssessment: any = null;
-      try {
-        const raw = localStorage.getItem('career_assistant_ke_active_data');
-        if (raw) cachedAssessment = JSON.parse(raw);
-      } catch (_) {}
+      const activeId = savedAssessmentId || cachedAssessment?.id || 'ASMT_ACTIVE';
 
       fetch('/api/paystack/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           reference,
-          assessmentId: savedAssessmentId,
+          assessmentId: activeId,
           assessment: cachedAssessment,
         }),
       })
         .then(async (res) => {
           const verifyData = await safeParseJson<any>(res);
-          if (verifyData && verifyData.status === 'PAID') {
-            if (verifyData.assessment) {
-              return verifyData.assessment;
-            }
-            const asmtRes = await fetch(`/api/assessments/${savedAssessmentId}`);
-            return await safeParseJson<StudentAssessment>(asmtRes);
-          }
-          throw new Error(verifyData?.error || 'Payment verification pending or unsuccessful');
-        })
-        .then(async (assessmentOrRes) => {
-          let fullAssessment: StudentAssessment | null = null;
-          if (assessmentOrRes && typeof (assessmentOrRes as any).json === 'function') {
-            fullAssessment = await safeParseJson<StudentAssessment>(assessmentOrRes as Response);
-          } else {
-            fullAssessment = assessmentOrRes as StudentAssessment;
-          }
+          if (verifyData && (verifyData.status === 'PAID' || verifyData.success === true)) {
+            const rawAssessment = verifyData.assessment || cachedAssessment;
+            const fullAssessment = ensureDetailedAssessment(
+              {
+                ...(rawAssessment || {}),
+                paymentStatus: 'PAID',
+                isUnlocked: true,
+                paidAmount: 100,
+                paidAt: verifyData.paidAt || new Date().toISOString(),
+                paymentReference: reference,
+              },
+              cachedAssessment
+            );
 
-          if (fullAssessment && fullAssessment.paymentStatus === 'PAID') {
-            setCurrentAssessment(fullAssessment);
-            try {
-              localStorage.setItem('career_assistant_ke_active_data', JSON.stringify(fullAssessment));
-            } catch (_) {}
-            setCurrentView('report');
+            if (fullAssessment) {
+              setCurrentAssessment(fullAssessment);
+              try {
+                localStorage.setItem('career_assistant_ke_active_id', fullAssessment.id);
+                localStorage.setItem('career_assistant_ke_active_data', JSON.stringify(fullAssessment));
+              } catch (_) {}
+              setCurrentView('report');
+            } else {
+              setCurrentView('preview');
+            }
           } else {
-            setCurrentView('preview');
+            throw new Error(verifyData?.error || 'Payment verification pending or unsuccessful');
           }
           // Clean up query parameters without reloading
           window.history.replaceState({}, document.title, window.location.pathname);
         })
         .catch((err) => {
           console.warn('Redirected payment check:', err);
-          // Attempt to restore regular assessment state safely
-          fetch(`/api/assessments/${savedAssessmentId}`)
-            .then(async (r) => {
-              const a = await safeParseJson<StudentAssessment>(r);
-              if (a) {
-                setCurrentAssessment(a);
-                setCurrentView(a.paymentStatus === 'PAID' ? 'report' : 'preview');
-              }
-            })
-            .catch(() => {});
+          if (cachedAssessment) {
+            setCurrentView(cachedAssessment.paymentStatus === 'PAID' ? 'report' : 'preview');
+          }
         })
         .finally(() => {
           setIsLoading(false);
@@ -130,23 +173,28 @@ export default function App() {
       return;
     }
 
-    // Normal load from localStorage
-    if (savedAssessmentId) {
+    // Normal load from server if needed, never overwriting detailed local data with an empty skeleton
+    if (savedAssessmentId && (!cachedAssessment || !cachedAssessment.detailedResults)) {
       fetch(`/api/assessments/${savedAssessmentId}`)
         .then(async (res) => {
           if (res.ok) {
             const data = await safeParseJson<StudentAssessment>(res);
-            if (data) return data;
+            if (data && data.detailedResults) return data;
           }
-          throw new Error('Could not restore from server');
+          return null;
         })
-        .then((data: StudentAssessment) => {
-          setCurrentAssessment(data);
-          localStorage.setItem('career_assistant_ke_active_data', JSON.stringify(data));
+        .then((data: StudentAssessment | null) => {
+          if (data) {
+            const restored = ensureDetailedAssessment(data, cachedAssessment);
+            if (restored) {
+              setCurrentAssessment(restored);
+              try {
+                localStorage.setItem('career_assistant_ke_active_data', JSON.stringify(restored));
+              } catch (_) {}
+            }
+          }
         })
-        .catch(() => {
-          // Keep cached data if we already had it
-        });
+        .catch(() => {});
     }
   }, []);
 
@@ -237,7 +285,21 @@ export default function App() {
 
   // Handle Payment Success from Paystack Modal
   const handlePaymentSuccess = (updatedAssessment: StudentAssessment) => {
-    setCurrentAssessment(updatedAssessment);
+    const verified = ensureDetailedAssessment(
+      {
+        ...updatedAssessment,
+        paymentStatus: 'PAID',
+        isUnlocked: true,
+      },
+      currentAssessment
+    ) || updatedAssessment;
+
+    setCurrentAssessment(verified);
+    try {
+      localStorage.setItem('career_assistant_ke_active_id', verified.id);
+      localStorage.setItem('career_assistant_ke_active_data', JSON.stringify(verified));
+    } catch (_) {}
+
     setIsPaystackModalOpen(false);
     setCurrentView('report');
     window.scrollTo({ top: 0, behavior: 'smooth' });

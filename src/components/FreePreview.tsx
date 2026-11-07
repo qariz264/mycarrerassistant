@@ -19,6 +19,7 @@ import { StudentAssessment } from '../types';
 import { isGradeEqualOrHigher } from '../lib/clusterCalculator';
 import { INITIAL_PROGRAMMES } from '../data/kuccpsData';
 import { runFullCareerAssessment } from '../lib/recommendationEngine';
+import { generateCareerReportPDF } from '../lib/pdfGenerator';
 
 interface FreePreviewProps {
   assessment: StudentAssessment;
@@ -330,34 +331,37 @@ export const FreePreview: React.FC<FreePreviewProps> = ({
           </div>
         </div>
 
-        {/* SECTION 3: PAYSTACK PAYOUT / UNLOCK FULL REPORT CARD (KSH 100) */}
-        <div className="relative rounded-2xl bg-gradient-to-b from-sky-50 via-white to-emerald-50/30 border-2 border-sky-400 p-6 sm:p-8 shadow-lg overflow-hidden">
-          
-          <div className="max-w-xl mx-auto text-center space-y-4">
+        {/* SECTION 3: UNLOCK FULL REPORT CARD (KSH 100) */}
+        <div className="relative rounded-2xl bg-white border border-slate-200 p-6 sm:p-8 shadow-sm overflow-hidden">
+          <div className="max-w-xl mx-auto text-center space-y-5">
             
-            <div className="inline-flex items-center justify-center p-3 rounded-2xl bg-sky-600 text-white shadow-md mb-1">
-              <ShieldCheck className="w-7 h-7" />
+            <div className="w-12 h-12 rounded-xl bg-sky-50 text-sky-600 border border-sky-100 flex items-center justify-center mx-auto shadow-2xs">
+              <ShieldCheck className="w-6 h-6" />
             </div>
 
             <div>
-              <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300">
-                Instant Access · One-Time Fee
-              </span>
-              <h3 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-2 tracking-tight">
+              <div className="flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-700">
+                <span>Instant Access</span>
+                <span aria-hidden="true">·</span>
+                <span>Official KUCCPS Standards</span>
+                <span aria-hidden="true">·</span>
+                <span>One-Time Fee</span>
+              </div>
+              <h3 className="text-2xl sm:text-3xl font-bold text-slate-900 mt-2 tracking-tight">
                 Unlock & Download Your Complete Report
               </h3>
-              <p className="text-xs sm:text-sm text-slate-600 mt-1">
-                One-time fee of <strong className="text-slate-900 font-bold font-mono">KSh 100</strong> (M-Pesa or Card). Instant activation with full official PDF report download.
+              <p className="text-xs sm:text-sm text-slate-600 mt-1 max-w-lg mx-auto leading-relaxed">
+                One-time official fee of <strong className="text-slate-900 font-bold font-mono">KSh 100</strong> via M-Pesa or Card. Instant unlock with full online analysis and official downloadable PDF report.
               </p>
             </div>
 
             {/* What is Unlocked Box */}
-            <div className="p-4 rounded-xl bg-white border border-slate-200 text-left space-y-2.5 shadow-2xs">
+            <div className="p-4 rounded-xl bg-slate-50/80 border border-slate-200 text-left space-y-2.5">
               <div className="text-xs font-bold uppercase tracking-wider text-slate-700 pb-1.5 border-b border-slate-200">
-                What You Get With Full Report (KSh 100):
+                Included in Your Full Report (KSh 100):
               </div>
               
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-700">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs text-slate-700">
                 <div className="flex items-start gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                   <span><strong>All 150+ Qualifying Courses</strong> with zero artificial caps or limits.</span>
@@ -387,16 +391,43 @@ export const FreePreview: React.FC<FreePreviewProps> = ({
 
             {/* Price & Primary Action Button */}
             <div className="pt-2 space-y-3">
-              <button
-                type="button"
-                onClick={onUnlock}
-                disabled={isLoadingPayment}
-                className="w-full py-3.5 sm:py-4 px-4 sm:px-6 text-sm sm:text-base font-bold text-white bg-sky-600 hover:bg-sky-500 active:bg-sky-700 rounded-xl shadow-md shadow-sky-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-              >
-                <Lock className="w-4 h-4 text-amber-300 shrink-0" />
-                <span className="truncate sm:whitespace-normal">Unlock & Download Full Report (KSh 100)</span>
-                <ArrowRight className="w-4 h-4 shrink-0" />
-              </button>
+              {assessment.paymentStatus === 'PAID' || assessment.isUnlocked ? (
+                <div className="space-y-2.5">
+                  <div className="text-xs font-bold text-emerald-600 flex items-center justify-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Payment Confirmed — Full Report Unlocked</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={onUnlock}
+                      className="w-full py-3.5 px-4 text-sm font-bold text-white bg-sky-600 hover:bg-sky-500 active:bg-sky-700 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <span>View Full Career Report</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => generateCareerReportPDF(assessment)}
+                      className="w-full py-3.5 px-4 text-sm font-semibold text-slate-800 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl shadow-2xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <FileDown className="w-4 h-4 text-emerald-600" />
+                      <span>Download PDF Report</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onUnlock}
+                  disabled={isLoadingPayment}
+                  className="w-full py-3.5 sm:py-4 px-4 sm:px-6 text-sm sm:text-base font-bold text-white bg-sky-600 hover:bg-sky-500 active:bg-sky-700 rounded-xl shadow-md shadow-sky-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  <Lock className="w-4 h-4 text-sky-200 shrink-0" />
+                  <span className="truncate sm:whitespace-normal">Unlock & Download Full Report (KSh 100)</span>
+                  <ArrowRight className="w-4 h-4 shrink-0" />
+                </button>
+              )}
 
               <div className="flex flex-wrap items-center justify-center gap-3 text-[11px] text-slate-500">
                 <span className="flex items-center gap-1 font-semibold text-emerald-700">

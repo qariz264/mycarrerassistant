@@ -39,6 +39,8 @@ import { StudentAssessment, ProgrammeEligibilityResult, ProgrammeLevel, Institut
 import { generateCareerReportPDF } from '../lib/pdfGenerator';
 import { isGradeEqualOrHigher } from '../lib/clusterCalculator';
 import { ALL_514_KENYAN_INSTITUTIONS } from '../data/kenyanInstitutions';
+import { runFullCareerAssessment } from '../lib/recommendationEngine';
+import { INITIAL_PROGRAMMES } from '../data/kuccpsData';
 
 export type KuccpsSlot = 'Choice 1a' | 'Choice 1b' | 'Choice 1c' | 'Choice 2' | 'Choice 3' | 'Choice 4';
 
@@ -189,7 +191,28 @@ export const FullReport: React.FC<FullReportProps> = ({ assessment, onBackToHome
   );
   const [isLoadingAi, setIsLoadingAi] = useState<boolean>(false);
 
-  const results = assessment.detailedResults;
+  let results = assessment.detailedResults;
+  if ((!results || !results.eligibleProgrammes) && assessment.subjects && assessment.subjects.length > 0) {
+    try {
+      const calc = runFullCareerAssessment(
+        {
+          studentName: assessment.studentName || 'Form Four Graduate',
+          studentEmail: assessment.studentEmail,
+          studentPhone: assessment.studentPhone,
+          kcseYear: assessment.kcseYear || 2025,
+          indexNumber: assessment.indexNumber,
+          subjects: assessment.subjects,
+          hobbies: assessment.hobbies || [],
+          otherHobby: assessment.otherHobby,
+          intendedCourse: assessment.intendedCourse || "I don't know yet",
+        },
+        INITIAL_PROGRAMMES
+      );
+      results = calc.detailedResults;
+    } catch (e) {
+      console.warn('Fallback career assessment calculation error:', e);
+    }
+  }
 
   // Open any of the 514 institutions interactively
   const handleOpenInstitutionModal = (instIdentifier: string | Institution) => {
@@ -315,8 +338,22 @@ export const FullReport: React.FC<FullReportProps> = ({ assessment, onBackToHome
 
   if (!results) {
     return (
-      <div className="min-h-screen bg-slate-50 py-16 px-4 text-center text-slate-700">
-        <p>Report details not found. Please contact support.</p>
+      <div className="min-h-screen bg-slate-50 py-20 px-4 flex items-center justify-center text-slate-800">
+        <div className="max-w-md w-full bg-white border border-slate-200 rounded-2xl p-8 text-center shadow-xs">
+          <div className="w-12 h-12 bg-sky-50 text-sky-600 rounded-xl flex items-center justify-center mx-auto mb-4">
+            <Compass className="w-6 h-6" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 mb-2">No Active Assessment Found</h2>
+          <p className="text-xs text-slate-600 leading-relaxed mb-6">
+            Your career report requires KCSE grade data to calculate KUCCPS cluster points and course eligibility.
+          </p>
+          <button
+            onClick={onBackToHome}
+            className="w-full py-3 px-4 text-xs font-bold text-white bg-sky-600 hover:bg-sky-500 rounded-xl shadow-xs transition-colors cursor-pointer"
+          >
+            Start KCSE Career Assessment
+          </button>
+        </div>
       </div>
     );
   }

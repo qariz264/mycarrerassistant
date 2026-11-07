@@ -8,10 +8,14 @@ import {
   ArrowRight,
   ExternalLink,
   RefreshCw,
-  Lock
+  Lock,
+  FileDown,
+  ShieldCheck,
+  CreditCard
 } from 'lucide-react';
 import { StudentAssessment } from '../types';
 import { PaystackConfigInfo } from './PaystackConfigModal';
+import { generateCareerReportPDF } from '../lib/pdfGenerator';
 
 interface PaystackModalProps {
   assessment: StudentAssessment;
@@ -48,6 +52,7 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
   const [currentReference, setCurrentReference] = useState<string>('');
   const [authUrl, setAuthUrl] = useState<string>('');
   const [manualReference, setManualReference] = useState<string>('');
+  const [confirmedAssessment, setConfirmedAssessment] = useState<StudentAssessment | null>(null);
   
   // Paystack configuration state loaded from server
   const [paystackConfig, setPaystackConfig] = useState<PaystackConfigInfo | null>(null);
@@ -84,6 +89,12 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       loadConfig();
+      if (assessment.studentEmail && !emailInput) {
+        setEmailInput(assessment.studentEmail);
+      }
+      if (assessment.studentPhone && !phoneInput) {
+        setPhoneInput(assessment.studentPhone);
+      }
     }
   }, [isOpen]);
 
@@ -144,35 +155,32 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
         rawInitText = await initRes.text();
         try {
           initData = JSON.parse(rawInitText);
-        } catch {
-          // Response is not JSON
-        }
-      } catch (readErr: any) {
-        rawInitText = readErr?.message || '';
+        } catch {}
+      } catch (e: any) {
+        rawInitText = e?.message || '';
       }
 
-      if (!initRes.ok || !initData?.status) {
-        // Fallback: If server-side init fails or returns error, check if a usable public key is available
-        const envPublicKey = (typeof import.meta !== 'undefined' && import.meta.env && ((import.meta.env as any).VITE_PAYSTACK_PUBLIC_KEY || (import.meta.env as any).VITE_PAYSTACK_KEY)) || '';
-        const fallbackPublicKey = initData?.publicKey || paystackConfig?.publicKey || envPublicKey;
-        if (fallbackPublicKey && fallbackPublicKey.startsWith('pk_')) {
-          const activeRef = `CAKE_${assessment.id.replace(/[^a-zA-Z0-9]/g, '')}_${Date.now()}`;
-          setCurrentReference(activeRef);
-          try {
-            localStorage.setItem('career_assistant_ke_active_ref', activeRef);
-            localStorage.setItem('career_assistant_ke_active_id', assessment.id);
-            localStorage.setItem('career_assistant_ke_active_data', JSON.stringify(assessment));
-          } catch (_) {}
-
+      if (!initRes.ok || !initData || !initData.status) {
+        // Fallback: If client has usable public key, try direct Paystack Pop setup
+        const activePublicKey = initData?.publicKey || paystackConfig?.publicKey;
+        if (activePublicKey && (activePublicKey.startsWith('pk_live_') || activePublicKey.startsWith('pk_test_'))) {
           const scriptReady = await ensurePaystackLoaded();
           if (scriptReady && window.PaystackPop) {
+            const activeRef = `CAKE_${assessment.id.replace(/[^a-zA-Z0-9]/g, '')}_${Date.now()}`;
+            setCurrentReference(activeRef);
+            try {
+              localStorage.setItem('career_assistant_ke_active_ref', activeRef);
+              localStorage.setItem('career_assistant_ke_active_id', assessment.id);
+              localStorage.setItem('career_assistant_ke_active_data', JSON.stringify(assessment));
+            } catch (_) {}
+
             setVerificationStage('awaiting_payment');
             setIsProcessing(false);
 
             const handler = window.PaystackPop.setup({
-              key: fallbackPublicKey,
+              key: activePublicKey,
               email: customerEmail,
-              amount: 10000,
+              amount: 10000, // KSh 100 in cents/kobo
               currency: 'KES',
               ref: activeRef,
               callback_url: `${returnUrl}&reference=${encodeURIComponent(activeRef)}`,
@@ -204,7 +212,7 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
           initData?.error || 
           initData?.message || 
           (rawInitText && !rawInitText.startsWith('<!') ? rawInitText.slice(0, 160) : '') ||
-          'Payment service is currently unavailable. If you just added PAYSTACK_SECRET_KEY in Vercel, please trigger a Redeploy on Vercel so the environment variables take effect.';
+          'Payment service is currently unavailable. Please check connection and click Proceed to Pay again.';
         setErrorMessage(detailedError);
         return;
       }
@@ -312,8 +320,6 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
       }
 
       if (verifyRes.ok && verifyData && (verifyData.status === 'PAID' || verifyData.success === true)) {
-        setVerificationStage('success');
-
         // Fetch or use unlocked assessment
         let fullAssessment = verifyData.assessment;
         if (!fullAssessment) {
@@ -321,23 +327,25 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
           fullAssessment = await safeParseJson<any>(fullRes);
         }
 
-        const confirmed: StudentAssessment = fullAssessment || {
+        const confirmed: StudentAssessment = {
           ...assessment,
+          ...(fullAssessment || {}),
           paymentStatus: 'PAID',
           isUnlocked: true,
           paidAmount: 100,
-          paidAt: new Date().toISOString(),
+          paidAt: verifyData?.paidAt || new Date().toISOString(),
           paymentReference: targetRef,
         };
 
         // Cache unlocked report locally
         try {
+          localStorage.setItem('career_assistant_ke_active_id', confirmed.id);
           localStorage.setItem('career_assistant_ke_active_data', JSON.stringify(confirmed));
         } catch (_) {}
 
-        setTimeout(() => {
-          onPaymentSuccess(confirmed);
-        }, 600);
+        setConfirmedAssessment(confirmed);
+        setVerificationStage('success');
+        setIsProcessing(false);
         return;
       }
 
@@ -359,90 +367,259 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200 overflow-y-auto">
-      <div className="relative w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-2xl p-5 sm:p-7 text-slate-900 my-auto max-h-[92vh] overflow-y-auto">
+      <div className="relative w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-2xl p-5 sm:p-7 text-slate-900 my-auto max-h-[94vh] overflow-y-auto">
         
         {/* Close Button */}
         <button
-          onClick={onClose}
+          onClick={() => {
+            if (verificationStage === 'success' && confirmedAssessment) {
+              onPaymentSuccess(confirmedAssessment);
+            } else {
+              onClose();
+            }
+          }}
           className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
           disabled={isProcessing && verificationStage === 'verifying_server'}
+          aria-label="Close"
         >
           <X className="w-5 h-5" />
         </button>
 
-        {/* Checkout Header */}
-        <h2 className="text-xl sm:text-2xl font-bold text-slate-900 mb-4">
-          Proceed to Pay
-        </h2>
-
-        {/* Amount Display */}
-        <div className="flex items-center justify-between p-4 rounded-xl bg-slate-50 border border-slate-200 mb-5">
-          <span className="text-sm font-medium text-slate-700">Amount</span>
-          <span className="text-2xl font-bold text-slate-900 font-mono">KSh 100</span>
-        </div>
-
-        {/* STAGES */}
+        {/* ------------------------------------------------------------- */}
+        {/* STAGE: VERIFYING WITH SERVER */}
+        {/* ------------------------------------------------------------- */}
         {verificationStage === 'verifying_server' && (
-          <div className="py-8 text-center space-y-3">
-            <Loader2 className="w-8 h-8 text-sky-600 animate-spin mx-auto" />
-            <div className="text-sm font-semibold text-slate-900">Verifying Payment...</div>
-            <div className="text-xs text-slate-500">Checking status with payment network</div>
+          <div className="py-10 text-center space-y-3">
+            <Loader2 className="w-9 h-9 text-sky-600 animate-spin mx-auto" />
+            <div className="text-base font-bold text-slate-900">Verifying Transaction...</div>
+            <p className="text-xs text-slate-500 max-w-xs mx-auto">
+              Confirming transaction status with the payment network. Please do not close this window.
+            </p>
           </div>
         )}
 
+        {/* ------------------------------------------------------------- */}
+        {/* STAGE: CONFIRMED PAYMENT (THE LAST PAYMENT CARD) */}
+        {/* ------------------------------------------------------------- */}
         {verificationStage === 'success' && (
-          <div className="py-8 text-center space-y-3">
-            <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
-              <CheckCircle2 className="w-6 h-6" />
+          <div className="py-2 text-center space-y-4">
+            <div className="w-14 h-14 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
+              <CheckCircle2 className="w-8 h-8" />
             </div>
-            <div className="text-base font-bold text-slate-900">Payment Verified Successfully!</div>
-            <div className="text-xs text-slate-500">Opening your complete career report now...</div>
+
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-emerald-700">Payment Confirmed</div>
+              <h3 className="text-xl sm:text-2xl font-bold text-slate-900 mt-0.5">Career Report Unlocked!</h3>
+              <p className="text-xs text-slate-600 mt-1 max-w-sm mx-auto">
+                KSh 100 payment verified successfully. Your comprehensive KUCCPS placement analysis and PDF are ready.
+              </p>
+            </div>
+
+            {/* Receipt Summary Strip */}
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-left text-xs space-y-1.5 font-mono">
+              <div className="flex justify-between text-slate-600">
+                <span>Amount Paid:</span>
+                <span className="font-bold text-slate-900">KSh 100.00</span>
+              </div>
+              <div className="flex justify-between text-slate-600">
+                <span>Reference:</span>
+                <span className="text-sky-700 truncate max-w-[200px]">{currentReference || confirmedAssessment?.paymentReference || assessment.id}</span>
+              </div>
+              <div className="flex justify-between text-slate-600">
+                <span>Status:</span>
+                <span className="font-bold text-emerald-600">✓ OFFICIAL UNLOCKED</span>
+              </div>
+            </div>
+
+            {/* Two Action Buttons: View Report & Download PDF */}
+            <div className="pt-2 space-y-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  const target = confirmedAssessment || { ...assessment, paymentStatus: 'PAID', isUnlocked: true };
+                  onPaymentSuccess(target);
+                }}
+                className="w-full py-3.5 px-4 text-sm font-bold text-white bg-sky-600 hover:bg-sky-500 active:bg-sky-700 rounded-xl shadow-md shadow-sky-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <span>View Complete Career Report</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const target = confirmedAssessment || { ...assessment, paymentStatus: 'PAID', isUnlocked: true };
+                  generateCareerReportPDF(target);
+                }}
+                className="w-full py-3 px-4 text-sm font-semibold text-slate-800 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl shadow-2xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <FileDown className="w-4 h-4 text-emerald-600" />
+                <span>Download Official PDF Report</span>
+              </button>
+            </div>
+
+            <p className="text-[11px] text-slate-500 pt-1">
+              Your unlocked report is permanently available in this browser. You can re-download the PDF anytime.
+            </p>
           </div>
         )}
 
+        {/* ------------------------------------------------------------- */}
+        {/* STAGE: IDLE / INITIATING / AWAITING / FAILED */}
+        {/* ------------------------------------------------------------- */}
         {verificationStage !== 'verifying_server' && verificationStage !== 'success' && (
           <div className="space-y-4">
             
+            {/* Header */}
+            <div>
+              <div className="text-xs font-semibold text-sky-600 uppercase tracking-wider mb-1">
+                Official Career Guidance
+              </div>
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                Proceed to Pay
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Instant access to all 150+ qualifying KUCCPS courses and downloadable official PDF.
+              </p>
+            </div>
+
+            {/* Amount Display */}
+            <div className="flex items-center justify-between p-4 rounded-xl bg-slate-50 border border-slate-200">
+              <div>
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block">Total Due</span>
+                <span className="text-xs text-slate-600">One-time official unlock fee</span>
+              </div>
+              <span className="text-2xl font-bold text-slate-900 font-mono">KSh 100</span>
+            </div>
+
+            {/* Error Message banner if failed */}
             {errorMessage && (
-              <div className="p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2">
+              <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
                 <span className="leading-relaxed font-medium">{errorMessage}</span>
               </div>
             )}
 
-            {/* Action buttons when verification failed */}
+            {/* AWAITING PAYMENT STATE */}
+            {verificationStage === 'awaiting_payment' && (
+              <div className="p-4 rounded-xl bg-sky-50/60 border border-sky-200 space-y-3.5">
+                <div className="flex items-center gap-2 text-xs text-sky-800 font-bold">
+                  <Smartphone className="w-4 h-4 text-sky-600" />
+                  <span>Payment Window Active</span>
+                </div>
+
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Please complete the KSh 100 transaction in the Paystack checkout window or on your phone via M-Pesa. Once finished, click below to unlock your report:
+                </p>
+
+                {authUrl && (
+                  <a
+                    href={authUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="w-full py-2.5 px-4 text-xs font-semibold text-sky-700 bg-white hover:bg-sky-50 border border-sky-200 rounded-lg flex items-center justify-center gap-1.5 shadow-2xs transition-colors text-center cursor-pointer"
+                  >
+                    <span>Reopen Paystack Window</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                )}
+
+                <div className="pt-1 flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleVerifyOnServer(currentReference)}
+                    className="w-full py-3 px-4 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>I Have Completed Payment — Unlock Report</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setVerificationStage('idle')}
+                    className="w-full py-2 text-xs font-medium text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
+                  >
+                    Change phone or email details
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* IDLE / FORM STAGE */}
+            {verificationStage === 'idle' && (
+              <>
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-700">
+                      Email Address (For payment receipt)
+                    </label>
+                    <input
+                      type="email"
+                      value={emailInput}
+                      onChange={(e) => setEmailInput(e.target.value)}
+                      placeholder="student@example.com"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 placeholder:text-slate-400"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-700">
+                      Phone Number (Optional — for M-Pesa push)
+                    </label>
+                    <input
+                      type="tel"
+                      value={phoneInput}
+                      onChange={(e) => setPhoneInput(e.target.value)}
+                      placeholder="0712345678"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 placeholder:text-slate-400"
+                    />
+                  </div>
+                </div>
+
+                {/* Primary Proceed to Pay Button */}
+                <button
+                  type="button"
+                  onClick={handleInitiatePaystack}
+                  disabled={isProcessing}
+                  className="w-full py-3.5 px-4 text-sm font-bold text-white bg-sky-600 hover:bg-sky-500 active:bg-sky-700 rounded-xl shadow-md shadow-sky-600/25 transition-all flex items-center justify-center gap-2 mt-4 cursor-pointer disabled:opacity-50"
+                >
+                  {isProcessing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Preparing Secure Checkout...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="w-4 h-4" />
+                      <span>Proceed to Pay KSh 100</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </>
+            )}
+
+            {/* FAILED STAGE */}
             {verificationStage === 'failed' && (
               <div className="space-y-2 pt-1">
                 <div className="flex flex-col gap-2">
-                  {authUrl ? (
-                    <a
-                      href={authUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="w-full py-2.5 px-4 text-xs font-bold text-white bg-sky-600 hover:bg-sky-500 rounded-lg flex items-center justify-center gap-1.5 shadow-sm transition-colors text-center cursor-pointer"
-                    >
-                      <span>Complete Payment (Open Window)</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={handleInitiatePaystack}
-                      className="w-full py-2.5 px-4 text-xs font-bold text-white bg-sky-600 hover:bg-sky-500 rounded-lg flex items-center justify-center gap-1.5 shadow-sm transition-colors cursor-pointer"
-                    >
-                      <Lock className="w-3.5 h-3.5" />
-                      <span>Click to Pay KSh 100</span>
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={handleInitiatePaystack}
+                    className="w-full py-3 px-4 text-xs font-bold text-white bg-sky-600 hover:bg-sky-500 rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                  >
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>Retry Payment (KSh 100)</span>
+                  </button>
 
                   {currentReference && (
                     <button
                       type="button"
                       onClick={() => handleVerifyOnServer(currentReference)}
-                      className="w-full py-2.5 px-4 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                      className="w-full py-2.5 px-4 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                     >
                       <RefreshCw className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>I Have Completed Payment — Verify Status</span>
+                      <span>Check Status Again</span>
                     </button>
                   )}
 
@@ -452,7 +629,7 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
                       setErrorMessage('');
                       setVerificationStage('idle');
                     }}
-                    className="w-full py-2 px-4 text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition-colors cursor-pointer"
+                    className="w-full py-2 px-4 text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl transition-colors cursor-pointer"
                   >
                     Start Over / Re-enter Details
                   </button>
@@ -471,125 +648,39 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
               </div>
             )}
 
-            {/* Email & Phone input fields for initial checkout */}
-            {verificationStage === 'idle' && (
-              <>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700">
-                    Email Address (For payment receipt)
-                  </label>
-                  <input
-                    type="email"
-                    value={emailInput}
-                    onChange={(e) => setEmailInput(e.target.value)}
-                    placeholder="student@example.com"
-                    className="w-full px-3.5 py-2.5 rounded-lg bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 placeholder:text-slate-400"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700">
-                    Phone Number (Optional)
-                  </label>
-                  <input
-                    type="tel"
-                    value={phoneInput}
-                    onChange={(e) => setPhoneInput(e.target.value)}
-                    placeholder="0712345678"
-                    className="w-full px-3.5 py-2.5 rounded-lg bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 placeholder:text-slate-400"
-                  />
-                </div>
-
-                {/* Primary Pay Button */}
-                <button
-                  type="button"
-                  onClick={handleInitiatePaystack}
-                  disabled={isProcessing}
-                  className="w-full py-3 px-4 text-sm font-bold text-white bg-sky-600 hover:bg-sky-500 active:bg-sky-700 rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 mt-4 cursor-pointer disabled:opacity-50"
-                >
-                  {isProcessing ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      <Lock className="w-4 h-4" />
-                      <span>Proceed to Pay KSh 100</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
-                </button>
-              </>
-            )}
-
-            {/* Awaiting Payment / Verification Trigger */}
-            {verificationStage === 'awaiting_payment' && (
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-4">
-                <div className="flex items-center gap-2 text-xs text-sky-700 font-semibold">
-                  <Smartphone className="w-4 h-4 text-sky-600" />
-                  <span>Payment Initialized</span>
-                </div>
-
-                {authUrl ? (
-                  <div className="space-y-3">
-                    <p className="text-xs text-slate-600 leading-relaxed">
-                      Complete your payment. If the payment window was closed, click below:
-                    </p>
-                    <a
-                      href={authUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="w-full py-2.5 px-4 text-xs font-bold text-white bg-sky-600 hover:bg-sky-500 rounded-lg flex items-center justify-center gap-1.5 shadow-sm text-center cursor-pointer"
-                    >
-                      <span>Open Payment Window</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-600 leading-relaxed">
-                    Payment reference: <code className="text-slate-800 bg-slate-100 px-1 py-0.5 rounded border border-slate-200 font-mono">{currentReference}</code>
-                  </p>
-                )}
-                
-                <div className="pt-2 flex flex-col gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleVerifyOnServer(currentReference)}
-                    className="w-full py-2.5 px-4 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>I Have Completed Payment — Verify Status</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setVerificationStage('idle')}
-                    className="w-full py-2 text-xs text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
-                  >
-                    Cancel or Change Details
-                  </button>
-                </div>
-              </div>
-            )}
+            {/* Payment security info */}
+            <div className="flex items-center justify-center gap-3 pt-2 text-[11px] text-slate-500">
+              <span className="flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Secured by Paystack</span>
+              </span>
+              <span>·</span>
+              <span className="flex items-center gap-1">
+                <Smartphone className="w-3.5 h-3.5 text-slate-600" />
+                <span>M-Pesa Express & Cards</span>
+              </span>
+            </div>
 
             {/* Manual reference verification option if needed */}
-            <div className="pt-1">
+            <div className="pt-2 border-t border-slate-100">
               <details className="text-xs text-slate-500">
                 <summary className="cursor-pointer hover:text-slate-800 font-medium">
-                  Already completed payment on another device? Enter reference
+                  Already paid or have a reference code? Click to verify
                 </summary>
-                <div className="mt-2 space-y-2">
+                <div className="mt-2.5 space-y-2">
                   <input
                     type="text"
                     value={manualReference}
                     onChange={(e) => setManualReference(e.target.value)}
-                    placeholder="e.g. CAKE_... or reference code"
+                    placeholder="e.g. CAKE_... or Paystack reference"
                     className="w-full px-3 py-2 rounded-lg bg-white border border-slate-300 text-slate-900 font-mono text-xs focus:outline-none focus:border-sky-500"
                   />
                   <button
                     type="button"
                     onClick={() => handleVerifyOnServer(manualReference)}
-                    className="w-full py-2 bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 rounded-lg font-medium text-xs cursor-pointer"
+                    className="w-full py-2 bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 rounded-lg font-medium text-xs cursor-pointer transition-colors"
                   >
-                    Verify Reference
+                    Verify Reference & Unlock Report
                   </button>
                 </div>
               </details>

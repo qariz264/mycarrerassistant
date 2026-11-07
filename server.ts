@@ -804,7 +804,16 @@ app.post(['/api/paystack/verify', '/paystack/verify'], async (req: Request, res:
     let assessment: StudentAssessment;
     const found = db.assessments.find(a => a.id === assessmentId);
     if (found) {
-      assessment = found;
+      assessment = {
+        ...found,
+        ...(incomingAssessment || {}),
+        id: found.id || assessmentId,
+      };
+      const idx = db.assessments.findIndex(a => a.id === assessmentId);
+      if (idx !== -1) {
+        db.assessments[idx] = assessment;
+        saveDatabase(db);
+      }
     } else if (incomingAssessment && incomingAssessment.id) {
       assessment = incomingAssessment;
       db.assessments.push(assessment);
@@ -849,7 +858,14 @@ app.post(['/api/paystack/verify', '/paystack/verify'], async (req: Request, res:
       assessment.paidAt = existingLog.verifiedAt;
       assessment.paymentReference = reference;
       saveDatabase(db);
-      return res.json({ success: true, status: 'PAID', isUnlocked: true, message: 'Payment previously verified.' });
+      return res.json({ 
+        success: true, 
+        status: 'PAID', 
+        isUnlocked: true, 
+        assessmentId: assessment.id,
+        assessment,
+        message: 'Payment previously verified.' 
+      });
     }
 
     let isVerified = false;

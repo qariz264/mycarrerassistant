@@ -132,7 +132,7 @@ export default async function handler(req: any, res: any) {
 
   try {
     const body = await getRequestBody(req);
-    const { reference } = body || {};
+    const { reference, assessmentId, assessment: incomingAssessment } = body || {};
 
     if (!reference) {
       return sendResponse(res, 400, { error: 'Missing transaction reference for verification' });
@@ -149,6 +149,18 @@ export default async function handler(req: any, res: any) {
       process.env.NODE_ENV !== 'production';
 
     if (isExplicitTestReference) {
+      let unlockedAssessment = null;
+      if (incomingAssessment && typeof incomingAssessment === 'object') {
+        unlockedAssessment = {
+          ...incomingAssessment,
+          paymentStatus: 'PAID',
+          isUnlocked: true,
+          paidAmount: 100,
+          paidAt: new Date().toISOString(),
+          paymentReference: reference,
+        };
+      }
+
       return sendResponse(res, 200, {
         success: true,
         status: 'PAID',
@@ -156,6 +168,7 @@ export default async function handler(req: any, res: any) {
         reference,
         amount: 100,
         paidAt: new Date().toISOString(),
+        assessment: unlockedAssessment,
         message: 'Test simulation transaction verified',
       });
     }
@@ -206,6 +219,20 @@ export default async function handler(req: any, res: any) {
       const rawAmount = Number(verifyData.data.amount) || 0;
       // 10000 = KSh 100 in kobo/cents, or 100 in major units
       if (rawAmount >= 100) {
+        let unlockedAssessment = null;
+        if (incomingAssessment && typeof incomingAssessment === 'object') {
+          unlockedAssessment = {
+            ...incomingAssessment,
+            id: assessmentId || incomingAssessment.id || `ASMT_${Date.now()}`,
+            paymentStatus: 'PAID',
+            isUnlocked: true,
+            paidAmount: 100,
+            paidAt: verifyData.data.paid_at || new Date().toISOString(),
+            paymentReference: reference,
+            gatewayResponse: verifyData.data.gateway_response || 'Approved',
+          };
+        }
+
         return sendResponse(res, 200, {
           success: true,
           status: 'PAID',
@@ -215,6 +242,7 @@ export default async function handler(req: any, res: any) {
           currency: verifyData.data.currency || 'KES',
           paidAt: verifyData.data.paid_at || new Date().toISOString(),
           gatewayResponse: verifyData.data.gateway_response || 'Approved',
+          assessment: unlockedAssessment,
         });
       } else {
         return sendResponse(res, 400, {
