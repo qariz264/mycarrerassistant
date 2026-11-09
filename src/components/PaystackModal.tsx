@@ -439,7 +439,7 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
                   const target = confirmedAssessment || { ...assessment, paymentStatus: 'PAID', isUnlocked: true };
                   onPaymentSuccess(target);
                 }}
-                className="w-full py-3.5 px-4 text-sm font-bold text-white bg-sky-600 hover:bg-sky-500 active:bg-sky-700 rounded-xl shadow-md shadow-sky-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full py-3.5 px-4 text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 active:bg-blue-700 rounded-xl shadow-md shadow-blue-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
                 <span>View Complete Career Report</span>
                 <ArrowRight className="w-4 h-4" />
@@ -528,7 +528,7 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
                   <button
                     type="button"
                     onClick={() => handleVerifyOnServer(currentReference)}
-                    className="w-full py-3 px-4 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                    className="w-full py-3 px-4 text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 active:bg-blue-700 rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-md shadow-blue-600/20 cursor-pointer"
                   >
                     <CheckCircle2 className="w-4 h-4" />
                     <span>I Have Completed Payment — Unlock Report</span>
@@ -581,7 +581,7 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
                   type="button"
                   onClick={handleInitiatePaystack}
                   disabled={isProcessing}
-                  className="w-full py-3.5 px-4 text-sm font-bold text-white bg-sky-600 hover:bg-sky-500 active:bg-sky-700 rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 mt-4 cursor-pointer disabled:opacity-50"
+                  className="w-full py-3.5 px-4 text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 active:bg-blue-700 rounded-xl shadow-md shadow-blue-600/20 transition-all flex items-center justify-center gap-2 mt-4 cursor-pointer disabled:opacity-50"
                 >
                   {isProcessing ? (
                     <>
@@ -605,7 +605,7 @@ export const PaystackModal: React.FC<PaystackModalProps> = ({
                   <button
                     type="button"
                     onClick={handleInitiatePaystack}
-                    className="w-full py-3 px-4 text-xs font-bold text-white bg-sky-600 hover:bg-sky-500 rounded-xl flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                    className="w-full py-3 px-4 text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 active:bg-blue-700 rounded-xl flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer"
                   >
                     <span>Retry Payment (KSh 100)</span>
                   </button>

@@ -370,7 +370,7 @@ export const FreePreview: React.FC<FreePreviewProps> = ({
                     <button
                       type="button"
                       onClick={onUnlock}
-                      className="w-full py-3.5 px-4 text-sm font-bold text-white bg-sky-600 hover:bg-sky-500 active:bg-sky-700 rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+                      className="w-full py-3.5 px-4 text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 active:bg-blue-700 rounded-xl shadow-md shadow-blue-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
                     >
                       <span>View Full Career Report</span>
                       <ArrowRight className="w-4 h-4" />
@@ -390,7 +390,7 @@ export const FreePreview: React.FC<FreePreviewProps> = ({
                   type="button"
                   onClick={onUnlock}
                   disabled={isLoadingPayment}
-                  className="w-full py-3.5 sm:py-4 px-4 sm:px-6 text-sm sm:text-base font-bold text-white bg-sky-600 hover:bg-sky-500 active:bg-sky-700 rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="w-full py-3.5 sm:py-4 px-4 sm:px-6 text-sm sm:text-base font-bold text-white bg-blue-600 hover:bg-blue-500 active:bg-blue-700 rounded-xl shadow-md shadow-blue-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   <span className="truncate sm:whitespace-normal">Unlock & Download Full Report (KSh 100)</span>
                   <ArrowRight className="w-4 h-4 shrink-0" />
