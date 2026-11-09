@@ -8,7 +8,6 @@ import { Navbar } from './components/Navbar';
 import { LandingPage } from './components/LandingPage';
 import { AssessmentWizard } from './components/AssessmentWizard';
 import { FreePreview } from './components/FreePreview';
-import { PaystackModal } from './components/PaystackModal';
 import { PaystackConfigModal } from './components/PaystackConfigModal';
 import { FullReport } from './components/FullReport';
 import { StudentAssessment } from './types';
@@ -81,7 +80,6 @@ function ensureDetailedAssessment(target: any, fallback?: any): StudentAssessmen
 export default function App() {
   const [currentView, setCurrentView] = useState<ViewMode>('landing');
   const [currentAssessment, setCurrentAssessment] = useState<StudentAssessment | null>(null);
-  const [isPaystackModalOpen, setIsPaystackModalOpen] = useState<boolean>(false);
   const [isPaystackConfigOpen, setIsPaystackConfigOpen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [globalError, setGlobalError] = useState<string>('');
@@ -300,7 +298,6 @@ export default function App() {
       localStorage.setItem('career_assistant_ke_active_data', JSON.stringify(verified));
     } catch (_) {}
 
-    setIsPaystackModalOpen(false);
     setCurrentView('report');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -359,13 +356,10 @@ export default function App() {
         {currentView === 'preview' && currentAssessment && (
           <FreePreview
             assessment={currentAssessment}
-            onUnlock={() => {
-              if (currentAssessment.paymentStatus === 'PAID') {
-                setCurrentView('report');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              } else {
-                setIsPaystackModalOpen(true);
-              }
+            onPaymentSuccess={handlePaymentSuccess}
+            onViewReport={() => {
+              setCurrentView('report');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
             isLoadingPayment={isLoading}
           />
@@ -383,22 +377,16 @@ export default function App() {
           ) : (
             <FreePreview
               assessment={currentAssessment}
-              onUnlock={() => setIsPaystackModalOpen(true)}
+              onPaymentSuccess={handlePaymentSuccess}
+              onViewReport={() => {
+                setCurrentView('report');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
               isLoadingPayment={isLoading}
             />
           )
         )}
       </main>
-
-      {/* Paystack Payment Checkout Modal */}
-      {isPaystackModalOpen && currentAssessment && (
-        <PaystackModal
-          assessment={currentAssessment}
-          isOpen={isPaystackModalOpen}
-          onClose={() => setIsPaystackModalOpen(false)}
-          onPaymentSuccess={handlePaymentSuccess}
-        />
-      )}
 
       {/* Global Paystack Key Settings Modal */}
       <PaystackConfigModal
